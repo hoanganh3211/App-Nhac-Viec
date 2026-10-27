@@ -42,6 +42,7 @@ import { RequestRedoModal } from './components/RequestRedoModal';
 import { ProposalVoteCard } from './components/ProposalVoteCard';
 import { NotificationModal } from './components/NotificationModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
+import { ChoreManagerModal } from './components/ChoreManagerModal';
 import { shareToZalo } from './utils/zalo';
 
 const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
@@ -99,6 +100,7 @@ export function App() {
   const [selectedChoreForRedo, setSelectedChoreForRedo] = useState<Chore | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
+  const [isChoreManagerOpen, setIsChoreManagerOpen] = useState(false);
 
   const unreadNotificationsCount = useMemo(() => {
     const unreadNotifs = (state.notifications || []).filter(
@@ -910,6 +912,128 @@ export function App() {
     showToast(`🗳️ Đã gửi đề xuất xóa ${target.name}! Cần hơn nửa thành viên đồng ý để phê duyệt.`);
   };
 
+  // Đề xuất sửa công việc (Nếu phòng > 1 người -> Cần biểu quyết quá bán)
+  const handleRequestEditChore = (
+    choreId: string,
+    updatedData: Partial<Omit<Chore, 'id' | 'assignedTo' | 'isCompletedToday'>>
+  ) => {
+    const targetChore = state.chores.find((c) => c.id === choreId);
+    if (!targetChore) return;
+
+    if (state.members.length <= 1) {
+      const updatedChores = state.chores.map((c) =>
+        c.id === choreId
+          ? {
+              ...c,
+              ...updatedData,
+              assignedTo: c.assignedTo, // Giữ nguyên người làm theo logic phân chia công việc
+              isCompletedToday: c.isCompletedToday,
+            }
+          : c
+      );
+      setState((prev) => ({
+        ...prev,
+        chores: updatedChores,
+      }));
+      showToast(`Đã cập nhật công việc "${targetChore.title}"!`);
+      return;
+    }
+
+    const proposalId = 'prop_edit_' + Date.now();
+    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const creatorName = currentMember?.name || 'Thành viên';
+    const creatorId = currentMember?.id || currentUserId || 'm_unknown';
+
+    const newProposal: RoomProposal = {
+      id: proposalId,
+      type: 'edit_chore',
+      creatorId,
+      creatorName,
+      title: `Sửa việc: ${targetChore.title}${updatedData.title && updatedData.title !== targetChore.title ? ` ➔ ${updatedData.title}` : ''}`,
+      description: `${creatorName} đề xuất chỉnh sửa thông tin việc "${targetChore.title}". Người làm vẫn giữ nguyên theo thuật toán xoay việc. Cần quá bán thành viên đồng ý.`,
+      createdAt: nowTimeStr,
+      targetChoreId: choreId,
+      updatedChoreData: updatedData,
+      votes: {
+        [creatorId]: 'agree',
+      },
+      status: 'pending',
+    };
+
+    const newNotification: AppNotification = {
+      id: 'notif_' + Date.now(),
+      title: '🗳️ Biểu quyết sửa công việc',
+      message: `${creatorName} đề xuất chỉnh sửa việc "${targetChore.title}". Hãy tham gia bỏ phiếu!`,
+      type: 'proposal_vote',
+      createdAt: `Hôm nay ${nowTimeStr}`,
+      readBy: [creatorId],
+      proposalId,
+      choreId,
+    };
+
+    setState((prev) => ({
+      ...prev,
+      proposals: [newProposal, ...(prev.proposals || [])],
+      notifications: [newNotification, ...(prev.notifications || [])],
+    }));
+
+    showToast(`🗳️ Đã gửi đề xuất sửa "${targetChore.title}"! Cần quá bán đồng ý để phê duyệt.`);
+  };
+
+  // Đề xuất xóa công việc (Nếu phòng > 1 người -> Cần biểu quyết quá bán)
+  const handleRequestDeleteChore = (choreId: string) => {
+    const targetChore = state.chores.find((c) => c.id === choreId);
+    if (!targetChore) return;
+
+    if (state.members.length <= 1) {
+      setState((prev) => ({
+        ...prev,
+        chores: prev.chores.filter((c) => c.id !== choreId),
+      }));
+      showToast(`Đã xóa công việc "${targetChore.title}"!`);
+      return;
+    }
+
+    const proposalId = 'prop_del_chore_' + Date.now();
+    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const creatorName = currentMember?.name || 'Thành viên';
+    const creatorId = currentMember?.id || currentUserId || 'm_unknown';
+
+    const newProposal: RoomProposal = {
+      id: proposalId,
+      type: 'delete_chore',
+      creatorId,
+      creatorName,
+      title: `Xóa việc: ${targetChore.title}`,
+      description: `${creatorName} đề xuất xóa vĩnh viễn việc "${targetChore.title}" khỏi phòng. Cần quá bán thành viên đồng ý.`,
+      createdAt: nowTimeStr,
+      targetChoreId: choreId,
+      votes: {
+        [creatorId]: 'agree',
+      },
+      status: 'pending',
+    };
+
+    const newNotification: AppNotification = {
+      id: 'notif_' + Date.now(),
+      title: '🗳️ Biểu quyết xóa công việc',
+      message: `${creatorName} đề xuất xóa việc "${targetChore.title}" khỏi phòng. Hãy tham gia bỏ phiếu!`,
+      type: 'proposal_vote',
+      createdAt: `Hôm nay ${nowTimeStr}`,
+      readBy: [creatorId],
+      proposalId,
+      choreId,
+    };
+
+    setState((prev) => ({
+      ...prev,
+      proposals: [newProposal, ...(prev.proposals || [])],
+      notifications: [newNotification, ...(prev.notifications || [])],
+    }));
+
+    showToast(`🗳️ Đã gửi đề xuất xóa "${targetChore.title}"! Cần quá bán đồng ý để phê duyệt.`);
+  };
+
   // Bỏ phiếu biểu quyết (Dân chủ phòng chung)
   const handleVoteProposal = (proposalId: string, vote: 'agree' | 'reject') => {
     if (!currentUserId) {
@@ -959,6 +1083,24 @@ export function App() {
             : c
         );
         rebalancePending = true;
+      } else if (proposal.type === 'edit_chore' && proposal.targetChoreId && proposal.updatedChoreData) {
+        // Cập nhật công việc: Không cho phép thay đổi người làm vào ngày hôm sau, vẫn tuân theo logic phân chia công việc
+        const choreId = proposal.targetChoreId;
+        updatedChores = updatedChores.map((c) => {
+          if (c.id === choreId) {
+            return {
+              ...c,
+              ...proposal.updatedChoreData,
+              assignedTo: c.assignedTo,
+              isCompletedToday: c.isCompletedToday,
+            };
+          }
+          return c;
+        });
+      } else if (proposal.type === 'delete_chore' && proposal.targetChoreId) {
+        // Xóa công việc khỏi phòng chung
+        const choreId = proposal.targetChoreId;
+        updatedChores = updatedChores.filter((c) => c.id !== choreId);
       }
     } else if (rejectCount >= Math.ceil(totalMembers / 2)) {
       // Số phiếu từ chối đã quá bán -> BÁC BỎ
@@ -1344,6 +1486,7 @@ export function App() {
         currentMember={currentMember}
         onOpenUserSelect={() => setIsUserSelectOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
+        onOpenChoreManager={() => setIsChoreManagerOpen(true)}
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenRules={() => setIsRulesOpen(true)}
@@ -1448,6 +1591,10 @@ export function App() {
         onOpenTransfer={(chore) => setTransferTargetChore(chore)}
         onNudge={handleNudge}
         onOpenRequestRedo={(chore) => setSelectedChoreForRedo(chore)}
+        onOpenChoreManager={() => {
+          setSelectedChoreForDetail(null);
+          setIsChoreManagerOpen(true);
+        }}
       />
 
       {/* Request Redo Modal */}
@@ -1480,6 +1627,16 @@ export function App() {
         onSettingsChanged={() => {
           showToast('🔔 Đã lưu cài đặt thông báo thành công!');
         }}
+      />
+
+      {/* Chore Manager Modal (Quản lý, chỉnh sửa, xóa việc) */}
+      <ChoreManagerModal
+        isOpen={isChoreManagerOpen}
+        onClose={() => setIsChoreManagerOpen(false)}
+        chores={state.chores}
+        members={state.members}
+        onRequestEditChore={handleRequestEditChore}
+        onRequestDeleteChore={handleRequestDeleteChore}
       />
     </div>
   );

@@ -66,7 +66,7 @@ export interface TransferRequest {
   createdAt: string;
 }
 
-export type ProposalType = 'add_chore' | 'delete_member';
+export type ProposalType = 'add_chore' | 'delete_member' | 'edit_chore' | 'delete_chore';
 
 export interface RoomProposal {
   id: string;
@@ -77,6 +77,8 @@ export interface RoomProposal {
   description: string;
   createdAt: string;
   choreData?: Omit<Chore, 'id' | 'isCompletedToday'>;
+  targetChoreId?: string;
+  updatedChoreData?: Partial<Omit<Chore, 'id' | 'assignedTo' | 'isCompletedToday'>>;
   targetMemberId?: string;
   targetMemberName?: string;
   votes: Record<string, 'agree' | 'reject'>; // memberId -> 'agree' | 'reject'

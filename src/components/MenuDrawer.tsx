@@ -9,7 +9,8 @@ import {
   Scale,
   Home,
   LogOut,
-  Bell
+  Bell,
+  ClipboardList
 } from 'lucide-react';
 import { Member } from '../types';
 
@@ -21,6 +22,7 @@ interface MenuDrawerProps {
   currentMember?: Member;
   onOpenUserSelect: () => void;
   onOpenMembers: () => void;
+  onOpenChoreManager: () => void;
   onOpenNotificationSettings: () => void;
   onOpenHistory: () => void;
   onOpenRules: () => void;
@@ -37,6 +39,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   currentMember,
   onOpenUserSelect,
   onOpenMembers,
+  onOpenChoreManager,
   onOpenNotificationSettings,
   onOpenHistory,
   onOpenRules,
@@ -126,6 +129,23 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               <div>
                 <div className="text-xs font-semibold text-slate-800">Thành viên & Cài đặt phòng</div>
                 <div className="text-[11px] text-slate-400">Xem danh sách, thêm/xóa người ở chung</div>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
+          </button>
+
+          {/* Chore Manager */}
+          <button
+            onClick={() => handleAction(onOpenChoreManager)}
+            className="w-full p-2.5 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group cursor-pointer"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <ClipboardList className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-slate-800">Quản lý danh sách việc</div>
+                <div className="text-[11px] text-slate-400">Xem danh sách, sửa hoặc xóa việc phòng</div>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />

@@ -12,7 +12,8 @@ import {
   ArrowRightLeft, 
   AlignLeft,
   User,
-  Undo2
+  Undo2,
+  Edit3
 } from 'lucide-react';
 import { Chore, Member } from '../types';
 import { formatChoreDays } from '../utils/storage';
@@ -27,6 +28,7 @@ interface ChoreDetailModalProps {
   onOpenTransfer: (chore: Chore) => void;
   onNudge: (chore: Chore, assignee?: Member) => void;
   onOpenRequestRedo: (chore: Chore) => void;
+  onOpenChoreManager?: () => void;
 }
 
 export const ChoreDetailModal: React.FC<ChoreDetailModalProps> = ({
@@ -39,6 +41,7 @@ export const ChoreDetailModal: React.FC<ChoreDetailModalProps> = ({
   onOpenTransfer,
   onNudge,
   onOpenRequestRedo,
+  onOpenChoreManager,
 }) => {
   if (!isOpen || !chore) return null;
 
@@ -112,12 +115,26 @@ export const ChoreDetailModal: React.FC<ChoreDetailModalProps> = ({
               </span>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-1">
+            {onOpenChoreManager && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenChoreManager();
+                }}
+                title="Quản lý & chỉnh sửa công việc này"
+                className="p-1 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-slate-200 transition cursor-pointer"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content body */}
