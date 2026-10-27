@@ -115,9 +115,16 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
 
                   {members.length > 1 && (
                     <button
-                      onClick={() => onDeleteMember(member.id)}
+                      onClick={() => {
+                        const confirmed = window.confirm(
+                          `Bạn có muốn tạo đề xuất xóa "${member.name}" khỏi phòng không?\n\nThao tác này cần quá bán (> 50%) thành viên trong phòng biểu quyết đồng ý để thực hiện.`
+                        );
+                        if (confirmed) {
+                          onDeleteMember(member.id);
+                        }
+                      }}
                       className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
-                      title="Xóa thành viên"
+                      title="Đề xuất biểu quyết xóa thành viên"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -125,6 +132,12 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
                 </div>
               ))}
             </div>
+
+            {members.length > 1 && (
+              <p className="text-[10px] text-slate-400 italic">
+                *Thao tác xóa thành viên cần được hơn nửa thành viên trong phòng biểu quyết đồng ý.
+              </p>
+            )}
           </div>
 
           {/* Add member form */}

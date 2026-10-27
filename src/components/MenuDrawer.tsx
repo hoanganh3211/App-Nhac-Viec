@@ -4,7 +4,6 @@ import {
   Users, 
   History, 
   Smartphone, 
-  UserCheck, 
   ChevronRight,
   Sparkles,
   Scale,
@@ -77,7 +76,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
           <div className="flex items-center space-x-2.5 min-w-0 mr-2">
             <span className="text-2xl shrink-0">{currentMember?.avatar || '👤'}</span>
             <div className="min-w-0">
-              <div className="text-[10px] text-indigo-900/70 font-semibold uppercase">Tài khoản của bạn:</div>
+              <div className="text-[10px] text-indigo-900/70 font-semibold uppercase">Tài khoản đang chọn:</div>
               <div className="text-xs font-bold text-slate-900 truncate">
                 {currentMember ? currentMember.name : 'Chưa chọn danh tính'}
               </div>
@@ -87,7 +86,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             onClick={() => handleAction(onOpenUserSelect)}
             className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50 shadow-2xs transition shrink-0 whitespace-nowrap"
           >
-            Đổi người
+            Đổi tài khoản
           </button>
         </div>
 
@@ -112,24 +111,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             <ChevronRight className="w-4 h-4 text-indigo-400 group-hover:text-indigo-600 transition" />
           </button>
 
-          {/* Change user */}
-          <button
-            onClick={() => handleAction(onOpenUserSelect)}
-            className="w-full p-2.5 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group"
-          >
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                <UserCheck className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-800">Đổi người dùng ("Tôi là ai")</div>
-                <div className="text-[11px] text-slate-400">Chọn hoặc tạo tài khoản trong phòng</div>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
-          </button>
-
-          {/* Members */}
+          {/* Members manager */}
           <button
             onClick={() => handleAction(onOpenMembers)}
             className="w-full p-2.5 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group"
@@ -139,8 +121,8 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                 <Users className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs font-semibold text-slate-800">Thành viên phòng</div>
-                <div className="text-[11px] text-slate-400">Xem và quản lý người ở chung</div>
+                <div className="text-xs font-semibold text-slate-800">Thành viên & Cài đặt phòng</div>
+                <div className="text-[11px] text-slate-400">Xem danh sách, thêm/xóa người ở chung</div>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />

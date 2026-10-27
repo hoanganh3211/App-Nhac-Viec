@@ -65,6 +65,34 @@ export interface TransferRequest {
   createdAt: string;
 }
 
+export type ProposalType = 'add_chore' | 'delete_member';
+
+export interface RoomProposal {
+  id: string;
+  type: ProposalType;
+  creatorId: string;
+  creatorName: string;
+  title: string;
+  description: string;
+  createdAt: string;
+  choreData?: Omit<Chore, 'id' | 'isCompletedToday'>;
+  targetMemberId?: string;
+  targetMemberName?: string;
+  votes: Record<string, 'agree' | 'reject'>; // memberId -> 'agree' | 'reject'
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'chore_completed' | 'proposal_vote' | 'chore_redo' | 'chore_transfer' | 'proposal_result';
+  createdAt: string;
+  readBy: string[]; // Danh sách memberId đã đọc thông báo này
+  proposalId?: string;
+  choreId?: string;
+}
+
 export interface AppState {
   roomName: string;
   roomCode: string;
@@ -72,6 +100,8 @@ export interface AppState {
   chores: Chore[];
   logs: ChoreLog[];
   transferRequests: TransferRequest[];
+  proposals?: RoomProposal[]; // Các đề xuất quan trọng cần biểu quyết quá bán
+  notifications?: AppNotification[]; // Danh sách thông báo hoạt động phòng
   lastDateChecked: string;
   rebalancePendingTomorrow?: boolean; // Đánh dấu chia đều lại việc vào ngày mai khi có người mới gia nhập
 }

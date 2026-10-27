@@ -1,12 +1,14 @@
 import React from 'react';
-import { Plus, Sparkles, Menu, ChevronDown } from 'lucide-react';
+import { Plus, Sparkles, Menu, ChevronDown, Bell } from 'lucide-react';
 
 interface NavbarProps {
   roomName: string;
   onOpenAddChore: () => void;
   onOpenMenu: () => void;
   onOpenRoomModal: () => void;
+  onOpenNotifications: () => void;
   uncompletedCount: number;
+  unreadNotificationsCount: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -14,7 +16,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAddChore,
   onOpenMenu,
   onOpenRoomModal,
+  onOpenNotifications,
   uncompletedCount,
+  unreadNotificationsCount,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-3.5 py-2.5 shadow-2xs">
@@ -42,7 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Right: Add Chore + Menu Drawer */}
+        {/* Right: Add Chore + Notifications Bell + Menu Drawer */}
         <div className="flex items-center space-x-1.5 shrink-0">
           <button
             onClick={onOpenAddChore}
@@ -51,6 +55,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
             <span className="text-[11px]">Thêm việc</span>
+          </button>
+
+          {/* Notifications bell */}
+          <button
+            onClick={onOpenNotifications}
+            title="Thông báo & Biểu quyết phòng"
+            className="h-8 w-8 relative flex items-center justify-center text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition shrink-0"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadNotificationsCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-rose-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center shadow-xs animate-pulse">
+                {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+              </span>
+            )}
           </button>
 
           <button

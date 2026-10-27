@@ -166,6 +166,8 @@ export const INITIAL_STATE: AppState = {
     },
   ],
   transferRequests: [],
+  proposals: [],
+  notifications: [],
 };
 
 // Next assignee calculation for rotation
@@ -261,6 +263,12 @@ export const loadState = (): AppState => {
     }
     if (!parsed.transferRequests) {
       parsed.transferRequests = [];
+    }
+    if (!parsed.proposals) {
+      parsed.proposals = [];
+    }
+    if (!parsed.notifications) {
+      parsed.notifications = [];
     }
 
     if (parsed.members) {

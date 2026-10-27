@@ -7,7 +7,7 @@ import {
   Share2, 
   UserCheck
 } from 'lucide-react';
-import { AppState, Chore, Member, TransferRequest, ChoreLog } from './types';
+import { AppState, Chore, Member, TransferRequest, ChoreLog, RoomProposal, AppNotification } from './types';
 import { loadState, saveState, getTodayDateString, autoBalanceChores, handleDayRollover } from './utils/storage';
 import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
@@ -38,6 +38,8 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { ChoreRecommendationModal } from './components/ChoreRecommendationModal';
 import { ChoreDetailModal } from './components/ChoreDetailModal';
 import { RequestRedoModal } from './components/RequestRedoModal';
+import { ProposalVoteCard } from './components/ProposalVoteCard';
+import { NotificationModal } from './components/NotificationModal';
 import { shareToZalo } from './utils/zalo';
 
 const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
@@ -93,6 +95,17 @@ export function App() {
   const [isChoreRecOpen, setIsChoreRecOpen] = useState(false);
   const [selectedChoreForDetail, setSelectedChoreForDetail] = useState<Chore | null>(null);
   const [selectedChoreForRedo, setSelectedChoreForRedo] = useState<Chore | null>(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  const unreadNotificationsCount = useMemo(() => {
+    const unreadNotifs = (state.notifications || []).filter(
+      (n) => !currentUserId || !n.readBy.includes(currentUserId)
+    ).length;
+    const pendingVotes = (state.proposals || []).filter(
+      (p) => p.status === 'pending' && (!currentUserId || !p.votes[currentUserId])
+    ).length;
+    return unreadNotifs + pendingVotes;
+  }, [state.notifications, state.proposals, currentUserId]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -382,6 +395,8 @@ export function App() {
     });
 
     let updatedLogs = [...state.logs];
+    let updatedNotifications = [...(state.notifications || [])];
+
     if (willBeCompleted) {
       updatedLogs = [
         {
@@ -397,6 +412,17 @@ export function App() {
         },
         ...state.logs,
       ];
+
+      const compNotif: AppNotification = {
+        id: 'notif_comp_' + Date.now(),
+        title: 'Hoàn thành việc nhà',
+        message: `${assignee?.name || 'Thành viên'} vừa hoàn thành "${targetChore.title}" (+${earnedPoints}đ)!`,
+        type: 'chore_completed',
+        createdAt: `Hôm nay ${nowTimeStr}`,
+        readBy: currentUserId ? [currentUserId] : [],
+        choreId: targetChore.id,
+      };
+      updatedNotifications = [compNotif, ...updatedNotifications];
     } else {
       updatedLogs = [
         {
@@ -419,6 +445,7 @@ export function App() {
       members: updatedMembers,
       chores: updatedChores,
       logs: updatedLogs,
+      notifications: updatedNotifications,
     }));
 
     // Cập nhật state modal chi tiết nếu đang mở việc này
@@ -491,11 +518,22 @@ export function App() {
       note: `${currentMember.name} yêu cầu làm lại: "${reason}"`,
     };
 
+    const redoNotif: AppNotification = {
+      id: 'notif_redo_' + Date.now(),
+      title: '⚠️ Yêu cầu làm lại việc',
+      message: `${currentMember.name} yêu cầu ${assignee.name} làm lại "${targetChore.title}" (Lý do: ${reason}).`,
+      type: 'chore_redo',
+      createdAt: `Hôm nay ${nowTimeStr}`,
+      readBy: [currentMember.id],
+      choreId: targetChore.id,
+    };
+
     setState((prev) => ({
       ...prev,
       members: updatedMembers,
       chores: updatedChores,
       logs: [redoLog, ...prev.logs],
+      notifications: [redoNotif, ...(prev.notifications || [])],
     }));
 
     setSelectedChoreForRedo(null);
@@ -531,9 +569,20 @@ export function App() {
       createdAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     };
 
+    const transferNotif: AppNotification = {
+      id: 'notif_trans_' + Date.now(),
+      title: '🔄 Lời mời nhượng việc',
+      message: `${currentMember.name} muốn nhượng việc "${chore.title}" (+${chore.points}đ) cho ${targetMember.name}.`,
+      type: 'chore_transfer',
+      createdAt: `Hôm nay ${newRequest.createdAt}`,
+      readBy: [currentMember.id],
+      choreId: chore.id,
+    };
+
     setState((prev) => ({
       ...prev,
       transferRequests: [newRequest, ...(prev.transferRequests || [])],
+      notifications: [transferNotif, ...(prev.notifications || [])],
     }));
 
     showToast(`Đã gửi lời mời nhượng việc "${chore.title}" cho ${targetMember.name}!`);
@@ -727,17 +776,244 @@ export function App() {
     showToast(`Đã chuẩn bị lời nhắc cho ${assignee?.name}! Hãy dán vào Zalo nhé.`);
   };
 
+  // Thêm công việc (Nếu phòng > 1 người -> Cần biểu quyết quá bán)
   const handleAddChore = (newChoreData: Omit<Chore, 'id' | 'isCompletedToday'>) => {
-    const newChore: Chore = {
-      ...newChoreData,
-      id: 'chore_' + Date.now(),
-      isCompletedToday: false,
+    if (state.members.length <= 1) {
+      const newChore: Chore = {
+        ...newChoreData,
+        id: 'chore_' + Date.now(),
+        isCompletedToday: false,
+      };
+      setState((prev) => ({
+        ...prev,
+        chores: [newChore, ...prev.chores],
+      }));
+      showToast(`Đã thêm việc "${newChore.title}" (+${newChore.points}đ)!`);
+      return;
+    }
+
+    const proposalId = 'prop_chore_' + Date.now();
+    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const creatorName = currentMember?.name || 'Thành viên';
+    const creatorId = currentMember?.id || currentUserId || 'm_unknown';
+
+    const newProposal: RoomProposal = {
+      id: proposalId,
+      type: 'add_chore',
+      creatorId,
+      creatorName,
+      title: `Thêm việc: ${newChoreData.title} (+${newChoreData.points}đ)`,
+      description: `${creatorName} đề xuất thêm việc này vào phòng. Cần quá bán thành viên đồng ý để phê duyệt.`,
+      createdAt: nowTimeStr,
+      choreData: newChoreData,
+      votes: {
+        [creatorId]: 'agree', // Người đề xuất tính là 1 phiếu Đồng ý
+      },
+      status: 'pending',
     };
+
+    const newNotification: AppNotification = {
+      id: 'notif_' + Date.now(),
+      title: '🗳️ Biểu quyết thêm việc mới',
+      message: `${creatorName} vừa đề xuất thêm việc "${newChoreData.title}" (+${newChoreData.points}đ). Hãy tham gia bỏ phiếu!`,
+      type: 'proposal_vote',
+      createdAt: `Hôm nay ${nowTimeStr}`,
+      readBy: [creatorId],
+      proposalId,
+    };
+
     setState((prev) => ({
       ...prev,
-      chores: [newChore, ...prev.chores],
+      proposals: [newProposal, ...(prev.proposals || [])],
+      notifications: [newNotification, ...(prev.notifications || [])],
     }));
-    showToast(`Đã thêm việc "${newChore.title}" (+${newChore.points}đ)!`);
+
+    showToast(`🗳️ Đã gửi đề xuất thêm "${newChoreData.title}"! Cần quá bán thành viên bỏ phiếu để phê duyệt.`);
+  };
+
+  // Đề xuất xóa thành viên (Nếu phòng > 1 người -> Cần biểu quyết quá bán)
+  const handleRequestDeleteMember = (targetMemberId: string) => {
+    const target = state.members.find((m) => m.id === targetMemberId);
+    if (!target) return;
+
+    if (state.members.length <= 1) {
+      handleDeleteMember(targetMemberId);
+      return;
+    }
+
+    const creatorName = currentMember?.name || 'Thành viên';
+    const creatorId = currentMember?.id || currentUserId || 'm_unknown';
+    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const proposalId = 'prop_del_' + Date.now();
+
+    const newProposal: RoomProposal = {
+      id: proposalId,
+      type: 'delete_member',
+      creatorId,
+      creatorName,
+      title: `Xóa thành viên: ${target.name} ${target.avatar}`,
+      description: `${creatorName} đề xuất xóa ${target.name} khỏi phòng. Cần quá bán thành viên đồng ý.`,
+      createdAt: nowTimeStr,
+      targetMemberId: target.id,
+      targetMemberName: target.name,
+      votes: {
+        [creatorId]: 'agree', // Người đề xuất tính là 1 phiếu Đồng ý
+      },
+      status: 'pending',
+    };
+
+    const newNotification: AppNotification = {
+      id: 'notif_' + Date.now(),
+      title: '🗳️ Biểu quyết xóa thành viên',
+      message: `${creatorName} đề xuất xóa ${target.name} khỏi phòng. Hãy tham gia bỏ phiếu!`,
+      type: 'proposal_vote',
+      createdAt: `Hôm nay ${nowTimeStr}`,
+      readBy: [creatorId],
+      proposalId,
+    };
+
+    setState((prev) => ({
+      ...prev,
+      proposals: [newProposal, ...(prev.proposals || [])],
+      notifications: [newNotification, ...(prev.notifications || [])],
+    }));
+
+    showToast(`🗳️ Đã gửi đề xuất xóa ${target.name}! Cần hơn nửa thành viên đồng ý để phê duyệt.`);
+  };
+
+  // Bỏ phiếu biểu quyết (Dân chủ phòng chung)
+  const handleVoteProposal = (proposalId: string, vote: 'agree' | 'reject') => {
+    if (!currentUserId) {
+      showToast('⚠️ Vui lòng chọn bạn là ai trong phòng trước khi bỏ phiếu!');
+      return;
+    }
+
+    const proposal = (state.proposals || []).find((p) => p.id === proposalId);
+    if (!proposal || proposal.status !== 'pending') return;
+
+    const voterId = currentUserId;
+    const voterName = currentMember?.name || 'Thành viên';
+    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+    const updatedVotes = {
+      ...proposal.votes,
+      [voterId]: vote,
+    };
+
+    const totalMembers = state.members.length;
+    const requiredVotes = Math.floor(totalMembers / 2) + 1; // Quá bán (> 50%)
+    const agreeCount = Object.values(updatedVotes).filter((v) => v === 'agree').length;
+    const rejectCount = Object.values(updatedVotes).filter((v) => v === 'reject').length;
+
+    let newStatus: 'pending' | 'approved' | 'rejected' = 'pending';
+    let updatedChores = [...state.chores];
+    let updatedMembers = [...state.members];
+    let rebalancePending = state.rebalancePendingTomorrow;
+
+    if (agreeCount >= requiredVotes) {
+      // ĐÃ ĐẠT QUÁ BÁN ĐỒNG Ý -> THÔNG QUA
+      newStatus = 'approved';
+
+      if (proposal.type === 'add_chore' && proposal.choreData) {
+        const newChore: Chore = {
+          ...proposal.choreData,
+          id: 'chore_' + Date.now(),
+          isCompletedToday: false,
+        };
+        updatedChores = [newChore, ...updatedChores];
+      } else if (proposal.type === 'delete_member' && proposal.targetMemberId) {
+        const delId = proposal.targetMemberId;
+        updatedMembers = updatedMembers.filter((m) => m.id !== delId);
+        updatedChores = updatedChores.map((c) =>
+          c.assignedTo === delId && updatedMembers.length > 0
+            ? { ...c, assignedTo: updatedMembers[0].id }
+            : c
+        );
+        rebalancePending = true;
+      }
+    } else if (rejectCount >= Math.ceil(totalMembers / 2)) {
+      // Số phiếu từ chối đã quá bán -> BÁC BỎ
+      newStatus = 'rejected';
+    }
+
+    const updatedProposals = (state.proposals || []).map((p) =>
+      p.id === proposalId
+        ? {
+            ...p,
+            votes: updatedVotes,
+            status: newStatus,
+          }
+        : p
+    );
+
+    let updatedNotifications = [...(state.notifications || [])];
+    if (newStatus !== 'pending') {
+      const resultNotif: AppNotification = {
+        id: 'notif_res_' + Date.now(),
+        title: newStatus === 'approved' ? '🎉 Đề xuất đã được thông qua!' : '❌ Đề xuất bị từ chối',
+        message:
+          newStatus === 'approved'
+            ? `Đề xuất "${proposal.title}" đã đạt ${agreeCount}/${totalMembers} phiếu thuận và đã được thực thi!`
+            : `Đề xuất "${proposal.title}" không đủ số phiếu thuận (${rejectCount} phiếu chống) và đã bị hủy.`,
+        type: 'proposal_result',
+        createdAt: `Hôm nay ${nowTimeStr}`,
+        readBy: [voterId],
+        proposalId: proposal.id,
+      };
+      updatedNotifications = [resultNotif, ...updatedNotifications];
+    }
+
+    const updatedLogs: ChoreLog[] = newStatus !== 'pending'
+      ? [
+          {
+            id: 'log_vote_' + Date.now(),
+            choreId: 'vote',
+            choreTitle: proposal.title,
+            memberId: voterId,
+            memberName: voterName,
+            completedAt: `Hôm nay ${nowTimeStr}`,
+            pointsEarned: 0,
+            type: 'completed',
+            note:
+              newStatus === 'approved'
+                ? `Biểu quyết thông qua: ${proposal.title} (${agreeCount}/${totalMembers} phiếu)`
+                : `Biểu quyết bác bỏ: ${proposal.title} (${rejectCount} phiếu chống)`,
+          },
+          ...state.logs,
+        ]
+      : state.logs;
+
+    setState((prev) => ({
+      ...prev,
+      proposals: updatedProposals,
+      notifications: updatedNotifications,
+      chores: updatedChores,
+      members: updatedMembers,
+      rebalancePendingTomorrow: rebalancePending,
+      logs: updatedLogs,
+    }));
+
+    if (newStatus === 'approved') {
+      showToast(`🎉 Đề xuất "${proposal.title}" đã được thông qua (${agreeCount}/${totalMembers} phiếu)!`);
+    } else if (newStatus === 'rejected') {
+      showToast(`❌ Đề xuất "${proposal.title}" đã bị từ chối (${rejectCount} phiếu chống).`);
+    } else {
+      showToast(`Đã ghi nhận phiếu ${vote === 'agree' ? 'Đồng ý' : 'Từ chối'} của bạn!`);
+    }
+  };
+
+  // Đánh dấu đã đọc tất cả thông báo
+  const handleMarkAllNotificationsAsRead = () => {
+    if (!currentUserId) return;
+    const updated = (state.notifications || []).map((n) => ({
+      ...n,
+      readBy: n.readBy.includes(currentUserId) ? n.readBy : [...n.readBy, currentUserId],
+    }));
+    setState((prev) => ({
+      ...prev,
+      notifications: updated,
+    }));
+    showToast('Đã đánh dấu đã đọc tất cả thông báo!');
   };
 
   const handleAddMember = (name: string, avatar: string, zaloName: string) => {
@@ -866,13 +1142,23 @@ export function App() {
       <Navbar
         roomName={state.roomName}
         uncompletedCount={uncompletedCount}
+        unreadNotificationsCount={unreadNotificationsCount}
         onOpenAddChore={() => setIsAddChoreOpen(true)}
+        onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenMenu={() => setIsMenuOpen(true)}
         onOpenRoomModal={() => setIsRoomModalOpen(true)}
       />
 
       {/* Main Content */}
       <main className="p-3.5 space-y-3.5 flex-1">
+        {/* Democratic Proposal Voting Banner */}
+        <ProposalVoteCard
+          proposals={state.proposals || []}
+          members={state.members}
+          currentUserId={currentUserId}
+          onVote={handleVoteProposal}
+        />
+
         {/* Personalized Task Highlight Banner & Incoming Transfer Alert */}
         <PersonalTaskBanner
           currentMember={currentMember}
@@ -1084,7 +1370,7 @@ export function App() {
         roomName={state.roomName}
         onUpdateRoomName={handleUpdateRoomName}
         onAddMember={handleAddMember}
-        onDeleteMember={handleDeleteMember}
+        onDeleteMember={handleRequestDeleteMember}
       />
 
       {/* Zalo Reminder Modal */}
@@ -1139,6 +1425,18 @@ export function App() {
         currentMember={currentMember || null}
         members={state.members}
         onConfirmRedo={handleConfirmRedo}
+      />
+
+      {/* Notification & Democratic Voting Center Modal */}
+      <NotificationModal
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        notifications={state.notifications || []}
+        proposals={state.proposals || []}
+        members={state.members}
+        currentUserId={currentUserId}
+        onMarkAllRead={handleMarkAllNotificationsAsRead}
+        onVoteProposal={handleVoteProposal}
       />
     </div>
   );

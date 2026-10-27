@@ -247,13 +247,18 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
           </div>
 
           {/* Submit button */}
-          <div className="pt-2">
+          <div className="pt-2 space-y-1.5">
             <button
               type="submit"
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 transition"
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 transition text-sm"
             >
-              Lưu & Phân Công Việc
+              {members.length > 1 ? '+ Gửi Đề Xuất Thêm Việc' : 'Lưu & Phân Công Việc'}
             </button>
+            {members.length > 1 && (
+              <p className="text-[10px] text-slate-400 text-center italic">
+                *Thêm việc mới sẽ được gửi cho phòng biểu quyết (cần &gt;50% đồng ý).
+              </p>
+            )}
           </div>
         </form>
       </div>
