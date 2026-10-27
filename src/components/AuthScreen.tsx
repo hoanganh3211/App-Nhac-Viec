@@ -49,8 +49,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Cloud Config Modal state
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  // Developer/Admin Secret Config (Chỉ mở khi có query param ?admin=cloud, tuyệt đối không hiện cho người dùng)
+  const [isConfigOpen, setIsConfigOpen] = useState(() => {
+    return typeof window !== 'undefined' && window.location.search.includes('admin=cloud');
+  });
   const currentCfg = getSupabaseConfig();
   const [cfgUrl, setCfgUrl] = useState(currentCfg?.url || '');
   const [cfgAnonKey, setCfgAnonKey] = useState(currentCfg?.anonKey || '');
@@ -409,23 +411,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         )}
       </div>
 
-      {/* Footer Info & Cloud DB Status */}
-      <div className="text-center text-[11px] text-slate-400 space-y-1.5 pb-2">
+      {/* Footer Info */}
+      <div className="text-center text-[11px] text-slate-400 space-y-1 pb-2">
         <div className="flex items-center justify-center space-x-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Bảo mật danh tính & đồng bộ tài khoản Realtime</span>
+          <span>Bảo mật danh tính & đồng bộ dữ liệu thời gian thực</span>
         </div>
-
-        <div>
-          <button
-            type="button"
-            onClick={() => setIsConfigOpen(true)}
-            className="text-[10px] text-indigo-600 hover:text-indigo-800 underline inline-flex items-center space-x-1 cursor-pointer bg-indigo-50/80 px-2.5 py-1 rounded-full border border-indigo-100"
-          >
-            <span>{currentCfg?.url ? '☁️ Đã kết nối Cloud Supabase (Bấm để xem/đổi)' : '⚙️ Cấu hình kết nối Cloud Supabase (Để đồng bộ điện thoại & Web)'}</span>
-          </button>
-        </div>
-
         <p>© 2026 ViệcNhà • Độc lập & Công bằng</p>
       </div>
 
