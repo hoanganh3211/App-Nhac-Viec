@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Circle, Clock, Flame, Send, ArrowRightLeft, Sparkles } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Flame, Send, ArrowRightLeft, Sparkles, Lock } from 'lucide-react';
 import { Chore, Member } from '../types';
 
 interface ChoreCardProps {
@@ -45,7 +45,7 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
       }`}
     >
       <div className="p-3.5">
-        {/* Main row: Icon + Info + Checkmark button */}
+        {/* Main row: Icon + Info + Checkmark button (CHỈ HIỆN NÚT TICK CHO CHÍNH CHỦ) */}
         <div className="flex items-center justify-between gap-2.5">
           {/* Left: Task Icon */}
           <div
@@ -113,22 +113,45 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
             </div>
           </div>
 
-          {/* Right: Big Checkbox Toggle Button */}
-          <button
-            onClick={() => onToggleComplete(chore.id)}
-            className={`shrink-0 p-1.5 rounded-2xl transition-all transform active:scale-95 ${
-              chore.isCompletedToday
-                ? 'text-emerald-600 hover:text-emerald-700'
-                : 'text-slate-300 hover:text-indigo-600'
-            }`}
-            title={chore.isCompletedToday ? 'Đánh dấu chưa xong' : 'Bấm để hoàn thành!'}
-          >
+          {/* Right: Checkbox completion area */}
+          <div className="shrink-0">
             {chore.isCompletedToday ? (
-              <CheckCircle2 className="w-7 h-7 fill-emerald-500 text-white" />
+              // Nếu đã xong:
+              // - Nếu là chính chủ: có thể bấm bỏ tick nếu nhầm
+              // - Nếu là người khác: chỉ hiển thị icon tĩnh, KHÔNG bấm được
+              isMine ? (
+                <button
+                  onClick={() => onToggleComplete(chore.id)}
+                  className="p-1.5 rounded-2xl text-emerald-600 hover:text-emerald-700 transition transform active:scale-95"
+                  title="Bấm để đánh dấu chưa xong"
+                >
+                  <CheckCircle2 className="w-7 h-7 fill-emerald-500 text-white" />
+                </button>
+              ) : (
+                <div className="p-1.5 text-emerald-600" title="Đã hoàn thành">
+                  <CheckCircle2 className="w-7 h-7 fill-emerald-500 text-white" />
+                </div>
+              )
+            ) : isMine ? (
+              // CHỈ HIỆN NÚT TICK KHI LÀ VIỆC CỦA CHÍNH MÌNH
+              <button
+                onClick={() => onToggleComplete(chore.id)}
+                className="p-1.5 rounded-2xl text-slate-300 hover:text-indigo-600 transition transform active:scale-95"
+                title="Bấm để xác nhận hoàn thành việc của bạn"
+              >
+                <Circle className="w-7 h-7 text-slate-300 stroke-[1.8]" />
+              </button>
             ) : (
-              <Circle className="w-7 h-7 text-slate-300 stroke-[1.8]" />
+              // NẾU LÀ VIỆC CỦA NGƯỜI KHÁC: ẨN NÚT TICK HOÀN TOÀN
+              <div 
+                className="flex items-center space-x-1 px-2 py-1 rounded-xl bg-slate-100 text-[10px] text-slate-400 font-medium"
+                title={`Chỉ ${assignee?.name || 'người được giao'} mới có quyền tick`}
+              >
+                <Lock className="w-3 h-3 text-slate-400" />
+                <span className="hidden sm:inline">Chờ làm</span>
+              </div>
             )}
-          </button>
+          </div>
         </div>
 
         {/* Card Footer: Assignee & Action Buttons */}
@@ -137,10 +160,12 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
           <div className="flex items-center space-x-1.5 min-w-0 flex-1 mr-2">
             <span className="text-[11px] text-slate-400 shrink-0">Làm:</span>
             {assignee ? (
-              <div className="flex items-center space-x-1 bg-slate-100 px-2 py-0.5 rounded-xl truncate">
+              <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-xl truncate ${
+                isMine ? 'bg-indigo-100 text-indigo-900 font-bold border border-indigo-200/80' : 'bg-slate-100 text-slate-800'
+              }`}>
                 <span className="text-xs shrink-0">{assignee.avatar}</span>
-                <span className="font-semibold text-slate-800 text-[11px] truncate">
-                  {assignee.name} {isMine && '(Bạn)'}
+                <span className="text-[11px] truncate">
+                  {assignee.name} {isMine && '(Việc của bạn)'}
                 </span>
                 {assignee.streak > 1 && (
                   <span className="text-[9px] text-amber-600 font-bold shrink-0">
@@ -153,9 +178,9 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
             )}
           </div>
 
-          {/* Action buttons (CHỈ CÒN Nhượng việc hoặc Nhắc Zalo - ĐÃ XÓA nút reload theo yêu cầu) */}
+          {/* Action buttons */}
           <div className="flex items-center space-x-1 shrink-0">
-            {/* Nhượng việc button (Chỉ người được giao mới có quyền nhượng và phải tốn điểm) */}
+            {/* Nhượng việc button (Chỉ chính chủ mới được nhượng) */}
             {isMine && !chore.isCompletedToday && (
               <button
                 onClick={() => onOpenTransfer(chore)}
@@ -167,6 +192,7 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
               </button>
             )}
 
+            {/* Nhắc Zalo (Chỉ người khác mới cần nhắc người được giao) */}
             {!chore.isCompletedToday && !isMine && (
               <button
                 onClick={() => onNudge(chore, assignee)}

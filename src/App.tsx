@@ -275,6 +275,12 @@ export function App() {
     const targetChore = state.chores.find((c) => c.id === choreId);
     if (!targetChore) return;
 
+    // Bảo mật vai trò: Chỉ chính chủ được giao việc mới có quyền tick hoàn thành
+    if (targetChore.assignedTo !== currentUserId) {
+      showToast('⚠️ Bạn không thể tick việc của người khác! Chỉ người phụ trách mới được tick.');
+      return;
+    }
+
     const willBeCompleted = !targetChore.isCompletedToday;
     const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const assignee = state.members.find((m) => m.id === targetChore.assignedTo);
