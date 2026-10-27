@@ -2,6 +2,7 @@ import { Chore, Member } from '../types';
 
 export const generateZaloDailyReminder = (
   roomName: string,
+  roomCode: string,
   chores: Chore[],
   members: Member[]
 ): string => {
@@ -12,22 +13,24 @@ export const generateZaloDailyReminder = (
   });
 
   const memberMap = new Map(members.map((m) => [m.id, m]));
-
   const pendingChores = chores.filter((c) => !c.isCompletedToday);
   const doneChores = chores.filter((c) => c.isCompletedToday);
+  const inviteUrl = `${window.location.origin}?room=${encodeURIComponent(roomCode)}`;
 
   let message = `🏠 [${roomName.toUpperCase()}] - LỜI NHẮC VIỆC NHÀ (${today})\n`;
+  message += `🔑 Mã phòng: ${roomCode}\n`;
   message += `━━━━━━━━━━━━━━━━━━━━\n`;
 
   if (pendingChores.length === 0) {
-    message += `🎉 Tuyệt vời! Tất cả công việc hôm nay đã được hoàn thành 100%!\nPhòng mình hôm nay siêu sạch sẽ! ✨\n`;
+    message += `🎉 Tuyệt vời! Tất cả việc nhà hôm nay đã hoàn thành 100%!\nPhòng mình siêu sạch sẽ và ngăn nắp! ✨\n`;
   } else {
     message += `📋 VIỆC CẦN LÀM HÔM NAY:\n`;
     pendingChores.forEach((chore, index) => {
       const assignee = memberMap.get(chore.assignedTo);
-      const assigneeName = assignee ? `@${assignee.zaloName || assignee.name}` : 'Chưa phân công';
+      const assigneeName = assignee ? `@${assignee.zaloName || assignee.name}` : 'Chưa giao';
+      const rewardPoints = chore.nextBonusPoints || chore.points;
       message += `${index + 1}. ${chore.icon} ${chore.title}\n`;
-      message += `   ⏰ Hạn chót: ${chore.dueTime} | ⭐ ${chore.points}đ\n`;
+      message += `   ⏰ Hạn: ${chore.dueTime} | ⭐ ${rewardPoints}đ\n`;
       message += `   👉 Phụ trách: ${assigneeName}\n\n`;
     });
   }
@@ -42,15 +45,13 @@ export const generateZaloDailyReminder = (
   }
 
   message += `━━━━━━━━━━━━━━━━━━━━\n`;
-  message += `💡 Làm xong mọi người nhớ mở App tick đã hoàn thành nhé!\n`;
-  message += `🔗 Truy cập app phòng: ${window.location.origin}\n`;
-  message += `⚠️ Nhắc nhở: Quá 23:00 chưa làm sẽ phạt vui vẻ theo quy ước phòng nha! ☕`;
+  message += `👉 Vào app tick việc: ${inviteUrl}\n`;
+  message += `⚠️ Lưu ý: Quá hạn chưa xong sẽ bị trừ điểm, tái phạm trừ (điểm việc + 2)!`;
 
   return message;
 };
 
 export const shareToZalo = async (text: string): Promise<boolean> => {
-  // Try Web Share API first (on mobile Safari/Chrome, this allows picking Zalo directly!)
   if (navigator.share) {
     try {
       await navigator.share({
@@ -58,12 +59,9 @@ export const shareToZalo = async (text: string): Promise<boolean> => {
         text: text,
       });
       return true;
-    } catch {
-      // User cancelled or share failed, fallback to copy
-    }
+    } catch {}
   }
 
-  // Fallback to clipboard
   try {
     await navigator.clipboard.writeText(text);
     return true;

@@ -7,6 +7,7 @@ interface ZaloReminderModalProps {
   isOpen: boolean;
   onClose: () => void;
   roomName: string;
+  roomCode: string;
   chores: Chore[];
   members: Member[];
 }
@@ -15,6 +16,7 @@ export const ZaloReminderModal: React.FC<ZaloReminderModalProps> = ({
   isOpen,
   onClose,
   roomName,
+  roomCode,
   chores,
   members,
 }) => {
@@ -22,7 +24,7 @@ export const ZaloReminderModal: React.FC<ZaloReminderModalProps> = ({
 
   if (!isOpen) return null;
 
-  const reminderText = generateZaloDailyReminder(roomName, chores, members);
+  const reminderText = generateZaloDailyReminder(roomName, roomCode, chores, members);
 
   const handleCopy = async () => {
     try {
@@ -37,7 +39,7 @@ export const ZaloReminderModal: React.FC<ZaloReminderModalProps> = ({
   const handleShare = async () => {
     const success = await shareToZalo(reminderText);
     if (success) {
-      setCopied(true);
+      setCopied(true),
       setTimeout(() => setCopied(false), 2500);
     }
   };
@@ -64,8 +66,7 @@ export const ZaloReminderModal: React.FC<ZaloReminderModalProps> = ({
           <div className="flex items-start space-x-2 p-3 bg-blue-50/80 rounded-2xl text-blue-800 text-xs leading-relaxed">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-blue-600" />
             <div>
-              Lời nhắc đã được định dạng sẵn với danh sách người phụ trách, thời hạn và link app.
-              Bạn chỉ cần bấm <strong>Mở Zalo gửi nhóm</strong> hoặc <strong>Sao chép</strong> rồi dán vào khung chat Zalo!
+              Tin nhắn có sẵn danh sách người làm việc hôm nay và <strong>link trực tiếp vào đúng phòng này</strong> ({roomCode}).
             </div>
           </div>
 

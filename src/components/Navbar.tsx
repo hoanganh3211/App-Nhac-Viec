@@ -1,10 +1,11 @@
 import React from 'react';
-import { Plus, Sparkles, Menu } from 'lucide-react';
+import { Plus, Sparkles, Menu, ChevronDown } from 'lucide-react';
 
 interface NavbarProps {
   roomName: string;
   onOpenAddChore: () => void;
   onOpenMenu: () => void;
+  onOpenRoomModal: () => void;
   uncompletedCount: number;
 }
 
@@ -12,20 +13,26 @@ export const Navbar: React.FC<NavbarProps> = ({
   roomName,
   onOpenAddChore,
   onOpenMenu,
+  onOpenRoomModal,
   uncompletedCount,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-3.5 py-2.5 shadow-2xs">
       <div className="max-w-md mx-auto flex items-center justify-between gap-2">
-        {/* Left: App Logo + Room Title + Badge */}
-        <div className="flex items-center space-x-2 min-w-0 flex-1">
+        {/* Left: App Logo + Room Title + Badge (Bấm vào để xem mã phòng & link mời) */}
+        <div 
+          onClick={onOpenRoomModal}
+          className="flex items-center space-x-2 min-w-0 flex-1 cursor-pointer hover:opacity-85 transition"
+          title="Bấm để xem mã phòng & chia sẻ link"
+        >
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-xs shrink-0">
             <Sparkles className="w-4 h-4" />
           </div>
 
           <div className="flex items-center space-x-1.5 min-w-0">
-            <h1 className="font-bold text-slate-800 text-sm truncate whitespace-nowrap">
-              {roomName}
+            <h1 className="font-bold text-slate-800 text-sm truncate whitespace-nowrap flex items-center space-x-1">
+              <span>{roomName}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             </h1>
             {uncompletedCount > 0 && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 shrink-0 whitespace-nowrap leading-none">
@@ -35,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Right: Add Chore + Menu Drawer (All settings & user-switching inside Menu) */}
+        {/* Right: Add Chore + Menu Drawer */}
         <div className="flex items-center space-x-1.5 shrink-0">
           <button
             onClick={onOpenAddChore}

@@ -8,7 +8,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { AppState, Chore, Member, TransferRequest } from './types';
-import { loadState, saveState, getNextAssignee } from './utils/storage';
+import { loadState, saveState, getNextAssignee, getTodayDateString } from './utils/storage';
 import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
   getNotificationPermission, 
@@ -33,6 +33,7 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { UserSelectModal } from './components/UserSelectModal';
 import { MenuDrawer } from './components/MenuDrawer';
 import { TransferChoreModal } from './components/TransferChoreModal';
+import { RoomModal } from './components/RoomModal';
 import { shareToZalo } from './utils/zalo';
 
 const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
@@ -57,18 +58,35 @@ export function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isPWAOpen, setIsPWAOpen] = useState(false);
+  const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [transferTargetChore, setTransferTargetChore] = useState<Chore | null>(null);
 
-  // Check URL query for room code (?room=xyz) on mount
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3500);
+  };
+
+  // Check URL query for room code (?room=xyz) on mount (Mở bằng link mời)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     if (roomParam && roomParam !== state.roomCode) {
-      setState((prev) => ({ ...prev, roomCode: roomParam }));
-      fetchStateFromCloud(roomParam).then((cloudState) => {
+      const cleanParam = roomParam.trim().toUpperCase();
+      fetchStateFromCloud(cleanParam).then((cloudState) => {
         if (cloudState) {
           setState(cloudState);
-          showToast(`Đã kết nối vào phòng "${cloudState.roomName}"!`);
+          // Check if current user is part of this room
+          const userInRoom = cloudState.members.some((m) => m.id === currentUserId);
+          if (!userInRoom) {
+            setCurrentUserId(null);
+            localStorage.removeItem(CURRENT_USER_KEY);
+            setIsUserSelectOpen(true);
+          }
+          showToast(`Đã vào phòng "${cloudState.roomName}"! Hãy chọn bạn là ai.`);
+        } else {
+          showToast(`⚠️ Không tìm thấy phòng với mã "${cleanParam}".`);
         }
       });
     }
@@ -93,7 +111,7 @@ export function App() {
     if (!supabase) return;
 
     const channel = supabase
-      .channel('room_changes')
+      .channel(`room_${state.roomCode}`)
       .on(
         'postgres_changes',
         {
@@ -135,13 +153,6 @@ export function App() {
     );
   }, [state.transferRequests, currentUserId]);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
-  };
-
   // Check Overdue and Apply Late Penalties (Quy tắc trừ điểm trễ & tái phạm)
   const checkOverduePenalties = useCallback(() => {
     const now = new Date();
@@ -157,14 +168,10 @@ export function App() {
       const [dueH, dueM] = chore.dueTime.split(':').map(Number);
       const dueMinutes = dueH * 60 + dueM;
 
-      // Past due
       if (currentMinutes > dueMinutes) {
         const assignee = updatedMembers.find((m) => m.id === chore.assignedTo);
         if (!assignee) return chore;
 
-        // Deduction rule:
-        // Lần đầu: trừ số điểm của việc.
-        // Tái phạm: trừ (điểm hiện tại của việc + 2)!
         const penaltyPoints =
           assignee.lateViolations > 0 ? chore.points + 2 : chore.points;
 
@@ -248,7 +255,7 @@ export function App() {
     }
   };
 
-  // Toggle chore completed (Hoàn thành việc & Cộng điểm / Thưởng hoàn trả)
+  // Toggle chore completed
   const handleToggleComplete = (choreId: string) => {
     const targetChore = state.chores.find((c) => c.id === choreId);
     if (!targetChore) return;
@@ -256,9 +263,6 @@ export function App() {
     const willBeCompleted = !targetChore.isCompletedToday;
     const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const assignee = state.members.find((m) => m.id === targetChore.assignedTo);
-
-    // Calculate reward points:
-    // If nextBonusPoints exists (do trước đó từng nhượng việc): thưởng (điểm việc + 1)
     const earnedPoints = targetChore.nextBonusPoints || targetChore.points;
 
     if (willBeCompleted) {
@@ -284,7 +288,6 @@ export function App() {
             ? member.points + earnedPoints
             : member.points - earnedPoints,
           streak: willBeCompleted ? member.streak + 1 : Math.max(0, member.streak - 1),
-          // Giảm vi phạm trễ nếu làm đúng hạn
           lateViolations: willBeCompleted
             ? Math.max(0, member.lateViolations - 1)
             : member.lateViolations,
@@ -332,7 +335,7 @@ export function App() {
     }));
   };
 
-  // Cơ chế nhượng việc: Khởi tạo gửi lời mời nhượng việc
+  // Cơ chế nhượng việc
   const handleInitiateTransfer = (chore: Chore, targetMemberId: string) => {
     if (!currentMember) return;
     const targetMember = state.members.find((m) => m.id === targetMemberId);
@@ -360,7 +363,7 @@ export function App() {
     showToast(`Đã gửi lời mời nhượng việc "${chore.title}" cho ${targetMember.name}!`);
   };
 
-  // Người nhận: Đồng ý nhận việc (Người nhượng mất điểm, Người nhận được gán việc)
+  // Người nhận đồng ý
   const handleAcceptTransfer = (requestId: string) => {
     const req = (state.transferRequests || []).find((r) => r.id === requestId);
     if (!req) return;
@@ -371,7 +374,6 @@ export function App() {
     const fromMember = state.members.find((m) => m.id === req.fromMemberId);
     const toMember = state.members.find((m) => m.id === req.toMemberId);
 
-    // 1. Trừ điểm người nhượng (mất cơ số điểm đó)
     const updatedMembers = state.members.map((m) => {
       if (m.id === req.fromMemberId) {
         return {
@@ -382,20 +384,18 @@ export function App() {
       return m;
     });
 
-    // 2. Chuyển việc cho người nhận, lưu originalAssignee để chu kỳ sau hoàn trả lại
     const updatedChores = state.chores.map((c) => {
       if (c.id === req.choreId) {
         return {
           ...c,
           assignedTo: req.toMemberId,
-          originalAssignee: req.fromMemberId, // Lưu để hoàn trả ở lượt sau
-          nextBonusPoints: c.points + 1, // Lượt sau người nhượng làm lại được (điểm + 1)
+          originalAssignee: req.fromMemberId,
+          nextBonusPoints: c.points + 1,
         };
       }
       return c;
     });
 
-    // 3. Ghi log phí nhượng việc
     const updatedLogs: typeof state.logs = [
       {
         id: 'log_trans_' + Date.now(),
@@ -411,7 +411,6 @@ export function App() {
       ...state.logs,
     ];
 
-    // 4. Cập nhật request status
     const updatedRequests = (state.transferRequests || []).map((r) =>
       r.id === requestId ? { ...r, status: 'accepted' as const } : r
     );
@@ -427,7 +426,7 @@ export function App() {
     showToast(`Bạn đã nhận việc "${req.choreTitle}". Hoàn thành sẽ được +${req.chorePoints}đ!`);
   };
 
-  // Người nhận: Từ chối nhận việc
+  // Người nhận từ chối
   const handleDeclineTransfer = (requestId: string) => {
     const req = (state.transferRequests || []).find((r) => r.id === requestId);
     const updatedRequests = (state.transferRequests || []).map((r) =>
@@ -440,6 +439,99 @@ export function App() {
     }));
 
     showToast(`Đã từ chối nhận việc "${req?.choreTitle}".`);
+  };
+
+  // Tham gia phòng bằng mã phòng (Join Room)
+  const handleJoinRoom = async (roomCode: string): Promise<boolean> => {
+    const cleanCode = roomCode.trim().toUpperCase();
+    const cloudState = await fetchStateFromCloud(cleanCode);
+    if (cloudState) {
+      setState(cloudState);
+      const userInRoom = cloudState.members.some((m) => m.id === currentUserId);
+      if (!userInRoom) {
+        setCurrentUserId(null);
+        localStorage.removeItem(CURRENT_USER_KEY);
+        setIsUserSelectOpen(true);
+      }
+      showToast(`Đã tham gia phòng "${cloudState.roomName}"!`);
+      return true;
+    }
+    return false;
+  };
+
+  // Tạo phòng mới (Create Room)
+  const handleCreateRoom = async (roomName: string, creatorName: string): Promise<string> => {
+    const newCode = `P-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const creatorId = 'm_' + Date.now();
+    const creatorMember: Member = {
+      id: creatorId,
+      name: creatorName,
+      avatar: '👑',
+      color: 'bg-indigo-600 text-white',
+      points: 0,
+      streak: 0,
+      lateViolations: 0,
+      zaloName: creatorName,
+    };
+
+    const defaultChores: Chore[] = [
+      {
+        id: 'c_' + Date.now() + '_1',
+        title: 'Đổ rác & Thay túi rác',
+        category: 'trash',
+        points: 1,
+        frequency: 'daily',
+        dueTime: '20:30',
+        assignedTo: creatorId,
+        rotationRule: 'round-robin',
+        isCompletedToday: false,
+        icon: '🗑️',
+        description: 'Gom rác và mang xuống nơi tập kết',
+      },
+      {
+        id: 'c_' + Date.now() + '_2',
+        title: 'Rửa bát & Lau bếp',
+        category: 'kitchen',
+        points: 2,
+        frequency: 'daily',
+        dueTime: '21:30',
+        assignedTo: creatorId,
+        rotationRule: 'round-robin',
+        isCompletedToday: false,
+        icon: '🍽️',
+        description: 'Rửa bát đĩa và lau khô mặt đá bếp',
+      },
+      {
+        id: 'c_' + Date.now() + '_3',
+        title: 'Cọ nhà vệ sinh',
+        category: 'cleaning',
+        points: 4,
+        frequency: 'alternate',
+        dueTime: '22:00',
+        assignedTo: creatorId,
+        rotationRule: 'least-points',
+        isCompletedToday: false,
+        icon: '🚽',
+        description: 'Cọ sạch bồn cầu, lavabo và sàn nhà tắm',
+      },
+    ];
+
+    const newRoomState: AppState = {
+      roomName,
+      roomCode: newCode,
+      lastDateChecked: getTodayDateString(),
+      members: [creatorMember],
+      chores: defaultChores,
+      logs: [],
+      transferRequests: [],
+    };
+
+    setState(newRoomState);
+    setCurrentUserId(creatorId);
+    localStorage.setItem(CURRENT_USER_KEY, creatorId);
+    await pushStateToCloud(newRoomState);
+    showToast(`Đã tạo phòng "${roomName}"! Mã phòng: ${newCode}`);
+    return newCode;
   };
 
   const handleRotateNext = (choreId: string) => {
@@ -460,7 +552,7 @@ export function App() {
   const handleNudge = async (chore: Chore, assignee?: Member) => {
     playNudgeSound();
     const tag = assignee ? `@${assignee.zaloName || assignee.name}` : 'bạn';
-    const text = `📢 [NHẮC VIỆC RIÊNG] Alo ${tag} ơi!\nĐến giờ làm "${chore.title}" rồi nè (${chore.dueTime}). Quá giờ sẽ bị trừ -${chore.points}đ đó nha! 🧹\n🔗 ${window.location.origin}`;
+    const text = `📢 [NHẮC VIỆC RIÊNG] Alo ${tag} ơi!\nĐến giờ làm "${chore.title}" rồi nè (${chore.dueTime}). Quá giờ sẽ bị trừ -${chore.points}đ đó nha! 🧹\n🔗 ${window.location.origin}?room=${encodeURIComponent(state.roomCode)}`;
     
     await shareToZalo(text);
     showToast(`Đã chuẩn bị lời nhắc cho ${assignee?.name}! Hãy dán vào Zalo nhé.`);
@@ -543,12 +635,13 @@ export function App() {
         paddingBottom: 'max(env(safe-area-inset-bottom), 5rem)',
       }}
     >
-      {/* Sleek Top Header */}
+      {/* Sleek Top Header (Click room name opens RoomModal) */}
       <Navbar
         roomName={state.roomName}
         uncompletedCount={uncompletedCount}
         onOpenAddChore={() => setIsAddChoreOpen(true)}
         onOpenMenu={() => setIsMenuOpen(true)}
+        onOpenRoomModal={() => setIsRoomModalOpen(true)}
       />
 
       {/* Main Content */}
@@ -582,7 +675,7 @@ export function App() {
           </div>
         </div>
 
-        {/* Fairness & Karma Board (Điểm tích lũy & Quy tắc trừ điểm) */}
+        {/* Fairness & Karma Board */}
         <FairnessBoard members={state.members} />
 
         {/* Filter Tabs */}
@@ -705,9 +798,19 @@ export function App() {
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenRules={() => setIsRulesOpen(true)}
         onOpenPWA={() => setIsPWAOpen(true)}
+        onOpenRoomModal={() => setIsRoomModalOpen(true)}
       />
 
-      {/* Transfer Chore Modal (Nhượng việc) */}
+      {/* Room Modal (Quản lý mã phòng / Nhập mã phòng / Tạo phòng mới) */}
+      <RoomModal
+        isOpen={isRoomModalOpen}
+        onClose={() => setIsRoomModalOpen(false)}
+        state={state}
+        onJoinRoom={handleJoinRoom}
+        onCreateRoom={handleCreateRoom}
+      />
+
+      {/* Transfer Chore Modal */}
       <TransferChoreModal
         isOpen={Boolean(transferTargetChore)}
         onClose={() => setTransferTargetChore(null)}
@@ -757,6 +860,7 @@ export function App() {
         isOpen={isZaloOpen}
         onClose={() => setIsZaloOpen(false)}
         roomName={state.roomName}
+        roomCode={state.roomCode}
         chores={state.chores}
         members={state.members}
       />
