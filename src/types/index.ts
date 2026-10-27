@@ -50,6 +50,7 @@ export interface ChoreLog {
   pointsEarned: number; // Dương nếu cộng, Âm nếu bị trừ điểm trễ
   type?: 'completed' | 'late_penalty' | 'transfer_fee' | 'transfer_reward' | 'recovery_bonus' | 'redo_requested';
   note?: string;
+  dateStr?: string; // Định dạng YYYY-MM-DD để tổng hợp lịch & heatmap
 }
 
 export interface TransferRequest {

@@ -43,6 +43,7 @@ import { ProposalVoteCard } from './components/ProposalVoteCard';
 import { NotificationModal } from './components/NotificationModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { ChoreManagerModal } from './components/ChoreManagerModal';
+import { ChoreScheduleModal } from './components/ChoreScheduleModal';
 import { shareToZalo } from './utils/zalo';
 
 const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
@@ -101,6 +102,7 @@ export function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
   const [isChoreManagerOpen, setIsChoreManagerOpen] = useState(false);
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
 
   const unreadNotificationsCount = useMemo(() => {
     const unreadNotifs = (state.notifications || []).filter(
@@ -295,6 +297,7 @@ export function App() {
             completedAt: `Hôm nay ${timeStr}`,
             pointsEarned: -penaltyPoints,
             type: 'late_penalty',
+            dateStr: todayStr,
             note:
               assignee.lateViolations > 0
                 ? `Tái phạm trễ hạn (-(điểm việc + 2))`
@@ -434,6 +437,7 @@ export function App() {
           completedAt: `Hôm nay ${nowTimeStr}`,
           pointsEarned: earnedPoints,
           type: targetChore.nextBonusPoints ? 'recovery_bonus' : 'completed',
+          dateStr: getTodayDateString(),
           note: targetChore.nextBonusPoints ? 'Thưởng hoàn trả (+1đ)' : undefined,
         },
         ...state.logs,
@@ -460,6 +464,7 @@ export function App() {
           completedAt: `Hôm nay ${nowTimeStr}`,
           pointsEarned: -earnedPoints,
           type: 'redo_requested',
+          dateStr: getTodayDateString(),
           note: 'Hủy đánh dấu hoàn thành để làm lại',
         },
         ...state.logs,
@@ -541,6 +546,7 @@ export function App() {
       completedAt: `Hôm nay ${nowTimeStr}`,
       pointsEarned: -earnedPoints,
       type: 'redo_requested',
+      dateStr: getTodayDateString(),
       note: `${currentMember.name} yêu cầu làm lại: "${reason}"`,
     };
 
@@ -657,6 +663,7 @@ export function App() {
         completedAt: `Hôm nay ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
         pointsEarned: -req.chorePoints,
         type: 'transfer_fee',
+        dateStr: getTodayDateString(),
         note: `Nhượng việc cho ${toMember?.name || 'bạn cùng phòng'}`,
       },
       ...state.logs,
@@ -1145,6 +1152,7 @@ export function App() {
             completedAt: `Hôm nay ${nowTimeStr}`,
             pointsEarned: 0,
             type: 'completed',
+            dateStr: getTodayDateString(),
             note:
               newStatus === 'approved'
                 ? `Biểu quyết thông qua: ${proposal.title} (${agreeCount}/${totalMembers} phiếu)`
@@ -1220,6 +1228,7 @@ export function App() {
       completedAt: `Hôm nay ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
       pointsEarned: avgPoints,
       type: 'completed',
+      dateStr: getTodayDateString(),
       note: avgPoints > 0
         ? `Cấp ${avgPoints}đ khởi đầu (TB phòng). Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai`
         : `Gia nhập phòng. Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai`,
@@ -1346,14 +1355,21 @@ export function App() {
           onOpenDetail={(chore) => setSelectedChoreForDetail(chore)}
         />
 
-        {/* Date & Quick Progress */}
-        <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+        {/* Date & Quick Progress / Schedule trigger */}
+        <div 
+          onClick={() => setIsScheduleOpen(true)}
+          className="flex items-center justify-between text-xs text-slate-600 px-3 py-2 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-100/80 rounded-xl cursor-pointer transition shadow-xs group"
+          title="Bấm để xem lịch tuần, tháng & bảng hoạt động đóng góp"
+        >
           <div className="flex items-center space-x-1.5 font-medium truncate">
-            <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-            <span className="capitalize truncate">{todayFormatted}</span>
+            <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0 group-hover:scale-110 transition-transform" />
+            <span className="capitalize truncate font-semibold text-slate-700">{todayFormatted}</span>
+            <span className="text-[10px] text-indigo-700 bg-indigo-100/90 font-bold px-1.5 py-0.5 rounded-md ml-1 shrink-0">
+              Lịch & Bảng hoạt động →
+            </span>
           </div>
 
-          <div className="flex items-center space-x-1 font-semibold text-slate-700 shrink-0 whitespace-nowrap">
+          <div className="flex items-center space-x-1 font-semibold text-slate-700 shrink-0 whitespace-nowrap ml-2">
             <span>Tiến độ:</span>
             <span className="text-indigo-600 font-bold">
               {completedCount}/{state.chores.length}
@@ -1487,6 +1503,7 @@ export function App() {
         onOpenUserSelect={() => setIsUserSelectOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
         onOpenChoreManager={() => setIsChoreManagerOpen(true)}
+        onOpenSchedule={() => setIsScheduleOpen(true)}
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenRules={() => setIsRulesOpen(true)}
@@ -1637,6 +1654,16 @@ export function App() {
         members={state.members}
         onRequestEditChore={handleRequestEditChore}
         onRequestDeleteChore={handleRequestDeleteChore}
+      />
+
+      {/* Chore Schedule & GitHub Activity Heatmap Modal */}
+      <ChoreScheduleModal
+        isOpen={isScheduleOpen}
+        onClose={() => setIsScheduleOpen(false)}
+        chores={state.chores}
+        members={state.members}
+        logs={state.logs}
+        currentUserId={currentUserId}
       />
     </div>
   );

@@ -163,6 +163,7 @@ export const INITIAL_STATE: AppState = {
       completedAt: 'Hôm nay 15:20',
       pointsEarned: 3,
       type: 'completed',
+      dateStr: getTodayDateString(),
     },
   ],
   transferRequests: [],
