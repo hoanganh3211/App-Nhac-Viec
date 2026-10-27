@@ -28,6 +28,10 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
   const [avatar, setAvatar] = useState('👨‍💻');
   const [zaloName, setZaloName] = useState('');
 
+  const avgPoints = members.length > 0
+    ? Math.max(0, Math.round(members.reduce((sum, m) => sum + m.points, 0) / members.length))
+    : 0;
+
   if (!isOpen) return null;
 
   const handleAdd = (e: React.FormEvent) => {
@@ -129,6 +133,15 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
               <UserPlus className="w-4 h-4 text-indigo-600" />
               <span>Thêm bạn cùng phòng mới:</span>
             </div>
+
+            {avgPoints > 0 && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-[11px] text-emerald-950 flex items-start space-x-2">
+                <span className="text-sm">🛡️</span>
+                <span>
+                  <strong>Bảo vệ người mới:</strong> Thành viên mới sẽ nhận ngay <strong>{avgPoints} điểm</strong> (điểm TB phòng) và toàn bộ việc nhà sẽ được tự động chia đều lại!
+                </span>
+              </div>
+            )}
 
             {/* Avatar picker */}
             <div>

@@ -24,6 +24,10 @@ export const UserSelectModal: React.FC<UserSelectModalProps> = ({
   const [newAvatar, setNewAvatar] = useState('🙋‍♂️');
   const [newZalo, setNewZalo] = useState('');
 
+  const avgPoints = members.length > 0
+    ? Math.max(0, Math.round(members.reduce((sum, m) => sum + m.points, 0) / members.length))
+    : 0;
+
   if (!isOpen) return null;
 
   const handleCreateAndSelect = (e: React.FormEvent) => {
@@ -105,6 +109,15 @@ export const UserSelectModal: React.FC<UserSelectModalProps> = ({
                 <Sparkles className="w-4 h-4 text-indigo-600" />
                 <span>Nhập thông tin của bạn:</span>
               </div>
+
+              {avgPoints > 0 && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-[11px] text-emerald-950 flex items-start space-x-2">
+                  <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Cơ chế điểm công bằng:</strong> Bạn sẽ nhận ngay <strong>{avgPoints} điểm</strong> khởi điểm (theo điểm TB phòng) và toàn bộ việc nhà sẽ được chia đều lại!
+                  </span>
+                </div>
+              )}
 
               <div className="flex space-x-2">
                 <select

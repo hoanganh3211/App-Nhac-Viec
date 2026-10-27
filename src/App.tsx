@@ -7,7 +7,7 @@ import {
   Share2, 
   UserCheck
 } from 'lucide-react';
-import { AppState, Chore, Member, TransferRequest } from './types';
+import { AppState, Chore, Member, TransferRequest, ChoreLog } from './types';
 import { loadState, saveState, getTodayDateString, autoBalanceChores } from './utils/storage';
 import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
@@ -35,6 +35,7 @@ import { MenuDrawer } from './components/MenuDrawer';
 import { TransferChoreModal } from './components/TransferChoreModal';
 import { RoomModal } from './components/RoomModal';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { ChoreRecommendationModal } from './components/ChoreRecommendationModal';
 import { shareToZalo } from './utils/zalo';
 
 const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
@@ -68,6 +69,7 @@ export function App() {
   const [isPWAOpen, setIsPWAOpen] = useState(false);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [transferTargetChore, setTransferTargetChore] = useState<Chore | null>(null);
+  const [isChoreRecOpen, setIsChoreRecOpen] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -498,54 +500,13 @@ export function App() {
       zaloName: creatorName,
     };
 
-    const defaultChores: Chore[] = [
-      {
-        id: 'c_' + Date.now() + '_1',
-        title: 'Đổ rác & Thay túi rác',
-        category: 'trash',
-        points: 1,
-        frequency: 'daily',
-        dueTime: '20:30',
-        assignedTo: creatorId,
-        rotationRule: 'round-robin',
-        isCompletedToday: false,
-        icon: '🗑️',
-        description: 'Gom rác và mang xuống nơi tập kết',
-      },
-      {
-        id: 'c_' + Date.now() + '_2',
-        title: 'Rửa bát & Lau bếp',
-        category: 'kitchen',
-        points: 2,
-        frequency: 'daily',
-        dueTime: '21:30',
-        assignedTo: creatorId,
-        rotationRule: 'round-robin',
-        isCompletedToday: false,
-        icon: '🍽️',
-        description: 'Rửa bát đĩa và lau khô mặt đá bếp',
-      },
-      {
-        id: 'c_' + Date.now() + '_3',
-        title: 'Cọ nhà vệ sinh',
-        category: 'cleaning',
-        points: 4,
-        frequency: 'alternate',
-        dueTime: '22:00',
-        assignedTo: creatorId,
-        rotationRule: 'least-points',
-        isCompletedToday: false,
-        icon: '🚽',
-        description: 'Cọ sạch bồn cầu, lavabo và sàn nhà tắm',
-      },
-    ];
-
+    // Khởi tạo phòng mới với danh sách việc trống
     const newRoomState: AppState = {
       roomName,
       roomCode: newCode,
       lastDateChecked: getTodayDateString(),
       members: [creatorMember],
-      chores: defaultChores,
+      chores: [],
       logs: [],
       transferRequests: [],
     };
@@ -557,8 +518,44 @@ export function App() {
     localStorage.setItem(HAS_ROOM_KEY, 'true');
 
     await pushStateToCloud(newRoomState);
-    showToast(`Đã tạo phòng "${roomName}"! Mã phòng: ${newCode}`);
+    
+    // Mở popup gợi ý công việc cho người dùng tuỳ chọn
+    setIsChoreRecOpen(true);
+    showToast(`Đã tạo phòng "${roomName}"! Hãy chọn các việc mẫu cho phòng.`);
     return newCode;
+  };
+
+  // Áp dụng các việc được gợi ý khi tạo phòng
+  const handleApplyRecommendedChores = (
+    selectedChores: Omit<Chore, 'id' | 'isCompletedToday' | 'assignedTo'>[]
+  ) => {
+    if (selectedChores.length === 0) {
+      setIsChoreRecOpen(false);
+      return;
+    }
+
+    const newChores: Chore[] = selectedChores.map((sc, idx) => ({
+      ...sc,
+      id: `c_${Date.now()}_${idx}`,
+      isCompletedToday: false,
+      assignedTo: state.members[0]?.id || currentUserId || '',
+    }));
+
+    const balancedChores = autoBalanceChores(newChores, state.members);
+
+    setState((prev) => ({
+      ...prev,
+      chores: balancedChores,
+    }));
+
+    setIsChoreRecOpen(false);
+    showToast(`🎉 Đã thêm ${selectedChores.length} công việc mẫu vào phòng!`);
+  };
+
+  // Bỏ qua gợi ý công việc
+  const handleSkipRecommendedChores = () => {
+    setIsChoreRecOpen(false);
+    showToast('Đã bắt đầu với danh sách việc trống. Bạn có thể tự thêm việc bất kỳ lúc nào!');
   };
 
   // Rời phòng (Quay về màn hình chào mừng)
@@ -598,34 +595,73 @@ export function App() {
   };
 
   const handleAddMember = (name: string, avatar: string, zaloName: string) => {
+    // 1. Tính điểm trung bình của các thành viên hiện tại trong phòng
+    // Tránh thiệt thòi cho người mới khi phòng đã hoạt động lâu
+    const existingMembers = state.members;
+    const avgPoints = existingMembers.length > 0
+      ? Math.max(0, Math.round(existingMembers.reduce((sum, m) => sum + m.points, 0) / existingMembers.length))
+      : 0;
+
+    const newMemberId = 'm_' + Date.now();
     const newMember: Member = {
-      id: 'm_' + Date.now(),
+      id: newMemberId,
       name,
       avatar,
       color: 'bg-indigo-500 text-white',
-      points: 0,
+      points: avgPoints, // Cấp điểm khởi đầu bằng điểm trung bình phòng
       streak: 0,
       lateViolations: 0,
       zaloName,
     };
+
+    const updatedMembers = [...existingMembers, newMember];
+
+    // 2. Tự động chia đều lại toàn bộ công việc nhà khi có thêm người mới
+    const rebalancedChores = autoBalanceChores(state.chores, updatedMembers);
+
+    // 3. Ghi log hoạt động gia nhập
+    const joinLog: ChoreLog = {
+      id: 'log_join_' + Date.now(),
+      choreId: 'join',
+      choreTitle: 'Gia nhập phòng',
+      memberId: newMember.id,
+      memberName: newMember.name,
+      completedAt: `Hôm nay ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
+      pointsEarned: avgPoints,
+      type: 'completed',
+      note: avgPoints > 0
+        ? `Cấp ${avgPoints}đ khởi đầu (theo điểm TB phòng) & chia đều lại việc nhà`
+        : 'Thành viên mới gia nhập phòng',
+    };
+
     setState((prev) => ({
       ...prev,
-      members: [...prev.members, newMember],
+      members: updatedMembers,
+      chores: rebalancedChores,
+      logs: [joinLog, ...prev.logs],
     }));
+
     handleSelectUser(newMember.id);
-    showToast(`Đã thêm ${name} vào phòng!`);
+    showToast(
+      avgPoints > 0
+        ? `🎉 Đã thêm ${name}! Cấp ${avgPoints}đ khởi điểm (TB phòng) & chia đều lại việc nhà.`
+        : `🎉 Đã thêm ${name} và phân chia đều lại việc nhà!`
+    );
   };
 
   const handleDeleteMember = (id: string) => {
+    const remainingMembers = state.members.filter((m) => m.id !== id);
+    const rebalancedChores = autoBalanceChores(state.chores, remainingMembers);
     setState((prev) => ({
       ...prev,
-      members: prev.members.filter((m) => m.id !== id),
+      members: remainingMembers,
+      chores: rebalancedChores,
     }));
     if (currentUserId === id) {
       setCurrentUserId(null);
       localStorage.removeItem(CURRENT_USER_KEY);
     }
-    showToast('Đã xóa thành viên.');
+    showToast('Đã xóa thành viên và phân bổ lại việc nhà.');
   };
 
   const handleUpdateRoomName = (name: string) => {
@@ -916,6 +952,14 @@ export function App() {
       <PWAInstallModal
         isOpen={isPWAOpen}
         onClose={() => setIsPWAOpen(false)}
+      />
+
+      {/* Chore Recommendation Modal for New Room */}
+      <ChoreRecommendationModal
+        isOpen={isChoreRecOpen}
+        roomName={state.roomName}
+        onApplyChores={handleApplyRecommendedChores}
+        onSkip={handleSkipRecommendedChores}
       />
     </div>
   );

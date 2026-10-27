@@ -84,6 +84,22 @@ export const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose }) => {
               </li>
             </ul>
           </div>
+
+          {/* Rule 4: Newcomer Protection & Auto Rebalancing */}
+          <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl space-y-1.5 text-emerald-950">
+            <div className="font-bold flex items-center space-x-1.5 text-emerald-900">
+              <Sparkles className="w-4 h-4 text-emerald-600" />
+              <span>4. Bảo vệ người mới (Chống dồn việc)</span>
+            </div>
+            <ul className="text-[11px] text-emerald-950 pl-5 space-y-1 list-disc">
+              <li>
+                <strong>Cấp điểm khởi đầu:</strong> Thành viên mới gia nhập phòng lâu ngày sẽ được cấp ngay số điểm bằng <strong>Điểm trung bình của phòng</strong>, không sợ bị 0 điểm hay bị ép gánh việc.
+              </li>
+              <li>
+                <strong>Chia đều lại việc nhà:</strong> Toàn bộ công việc trong phòng được hệ thống <strong>tự động phân chia lại</strong> đồng đều giữa tất cả mọi người ngay khi có người mới.
+              </li>
+            </ul>
+          </div>
         </div>
 
         {/* Footer */}
