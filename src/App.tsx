@@ -5,8 +5,6 @@ import {
   Calendar, 
   CheckCircle2, 
   Share2, 
-  ArrowRight,
-  ShieldCheck,
   UserCheck
 } from 'lucide-react';
 import { AppState, Chore, Member } from './types';
@@ -35,6 +33,7 @@ import { PenaltyModal } from './components/PenaltyModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { UserSelectModal } from './components/UserSelectModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
+import { MenuDrawer } from './components/MenuDrawer';
 import { shareToZalo } from './utils/zalo';
 
 const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
@@ -51,6 +50,7 @@ export function App() {
   );
 
   // Modals
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserSelectOpen, setIsUserSelectOpen] = useState(false);
   const [isAddChoreOpen, setIsAddChoreOpen] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
@@ -155,7 +155,7 @@ export function App() {
     const granted = await requestNotificationPermission();
     setNotificationPermission(granted ? 'granted' : 'denied');
     if (granted) {
-      showToast('🔔 Đã bật thông báo nhắc việc của bạn thành công!');
+      showToast('🔔 Đã bật thông báo việc của bạn thành công!');
       checkAndNotifyMyChores(state.chores, currentUserId, currentMember);
     } else {
       showToast('⚠️ Bạn chưa cấp quyền thông báo trên trình duyệt.');
@@ -174,13 +174,13 @@ export function App() {
     if (willBeCompleted) {
       playSuccessSound();
       confetti({
-        particleCount: 70,
-        spread: 60,
+        particleCount: 60,
+        spread: 55,
         origin: { y: 0.7 },
         colors: ['#6366f1', '#10b981', '#f59e0b', '#ec4899'],
       });
 
-      showToast(`🎉 Tuyệt vời! +${targetChore.points} điểm cho ${assignee?.name || 'bạn'}!`);
+      showToast(`🎉 +${targetChore.points} điểm cho ${assignee?.name || 'bạn'}!`);
     }
 
     const updatedMembers = state.members.map((member) => {
@@ -217,7 +217,7 @@ export function App() {
           choreTitle: targetChore.title,
           memberId: targetChore.assignedTo,
           memberName: assignee?.name || 'Thành viên',
-          completedAt: `Hôm nay lúc ${nowTimeStr}`,
+          completedAt: `Hôm nay ${nowTimeStr}`,
           pointsEarned: targetChore.points,
         },
         ...state.logs,
@@ -244,13 +244,13 @@ export function App() {
     );
 
     setState((prev) => ({ ...prev, chores: updatedChores }));
-    showToast(`Đã chuyển lượt "${chore.title}" cho ${nextMember?.name || 'người tiếp theo'}`);
+    showToast(`Đã chuyển việc cho ${nextMember?.name || 'người tiếp theo'}`);
   };
 
   const handleNudge = async (chore: Chore, assignee?: Member) => {
     playNudgeSound();
     const tag = assignee ? `@${assignee.zaloName || assignee.name}` : 'bạn';
-    const text = `📢 [NHẮC VIỆC RIÊNG] Alo ${tag} ơi!\nĐến giờ làm việc "${chore.title}" rồi nè (${chore.dueTime}). Làm xong nhớ mở app tick nhé! 🧹\n🔗 ${window.location.origin}`;
+    const text = `📢 [NHẮC VIỆC RIÊNG] Alo ${tag} ơi!\nĐến giờ làm "${chore.title}" rồi nè (${chore.dueTime}). Làm xong nhớ mở app tick nhé! 🧹\n🔗 ${window.location.origin}`;
     
     await shareToZalo(text);
     showToast(`Đã chuẩn bị lời nhắc cho ${assignee?.name}! Hãy dán vào Zalo nhé.`);
@@ -266,7 +266,7 @@ export function App() {
       ...prev,
       chores: [newChore, ...prev.chores],
     }));
-    showToast(`Đã thêm việc "${newChore.title}" thành công!`);
+    showToast(`Đã thêm việc "${newChore.title}"!`);
   };
 
   const handleAddMember = (name: string, avatar: string, zaloName: string) => {
@@ -284,7 +284,7 @@ export function App() {
       members: [...prev.members, newMember],
     }));
     handleSelectUser(newMember.id);
-    showToast(`Đã thêm ${name} và chọn danh tính thành công!`);
+    showToast(`Đã thêm ${name} vào phòng!`);
   };
 
   const handleDeleteMember = (id: string) => {
@@ -296,7 +296,7 @@ export function App() {
       setCurrentUserId(null);
       localStorage.removeItem(CURRENT_USER_KEY);
     }
-    showToast('Đã xóa thành viên khỏi phòng.');
+    showToast('Đã xóa thành viên.');
   };
 
   const handleUpdateRoomName = (name: string) => {
@@ -319,7 +319,7 @@ export function App() {
       ...prev,
       penalties: [newPenalty, ...prev.penalties],
     }));
-    showToast(`Đã ghi phạt ${amount.toLocaleString('vi-VN')}đ vào quỹ phòng!`);
+    showToast(`Đã ghi phạt ${amount.toLocaleString('vi-VN')}đ vào quỹ!`);
   };
 
   const handleMarkPaid = (id: string) => {
@@ -327,7 +327,7 @@ export function App() {
       ...prev,
       penalties: prev.penalties.map((p) => (p.id === id ? { ...p, status: 'paid' } : p)),
     }));
-    showToast('Đã ghi nhận nộp phạt vào quỹ phòng.');
+    showToast('Đã ghi nhận nộp phạt.');
   };
 
   // Filter chores
@@ -353,8 +353,14 @@ export function App() {
   const isCloudConnected = Boolean(getSupabaseConfig()?.url);
 
   return (
-    <div className="min-h-screen pb-24 max-w-md mx-auto relative bg-slate-50 flex flex-col font-sans">
-      {/* Top Navbar */}
+    <div 
+      className="min-h-screen max-w-md mx-auto relative bg-slate-50 flex flex-col font-sans"
+      style={{
+        paddingTop: 'max(env(safe-area-inset-top), 0px)',
+        paddingBottom: 'max(env(safe-area-inset-bottom), 5rem)',
+      }}
+    >
+      {/* Sleek, Non-wrapping Top Header */}
       <Navbar
         roomName={state.roomName}
         currentMember={currentMember}
@@ -362,16 +368,12 @@ export function App() {
         isCloudConnected={isCloudConnected}
         onOpenUserSelect={() => setIsUserSelectOpen(true)}
         onOpenAddChore={() => setIsAddChoreOpen(true)}
-        onOpenMembers={() => setIsMembersOpen(true)}
-        onOpenZaloReminder={() => setIsZaloOpen(true)}
-        onOpenHistory={() => setIsHistoryOpen(true)}
-        onOpenPWA={() => setIsPWAOpen(true)}
-        onOpenCloudSync={() => setIsCloudSyncOpen(true)}
+        onOpenMenu={() => setIsMenuOpen(true)}
       />
 
-      {/* Main Container */}
-      <main className="p-4 space-y-4 flex-1">
-        {/* Personal Task Highlight Banner (Targeted for THIS user) */}
+      {/* Main Scrollable Content */}
+      <main className="p-3.5 space-y-3.5 flex-1">
+        {/* Personalized Task Highlight Banner */}
         <PersonalTaskBanner
           currentMember={currentMember}
           myChores={myChores}
@@ -381,19 +383,18 @@ export function App() {
           onOpenUserSelect={() => setIsUserSelectOpen(true)}
         />
 
-        {/* Date & Motivation */}
+        {/* Date & Quick Progress */}
         <div className="flex items-center justify-between text-xs text-slate-500 px-1">
-          <div className="flex items-center space-x-1.5 font-medium">
-            <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-            <span className="capitalize">{todayFormatted}</span>
+          <div className="flex items-center space-x-1.5 font-medium truncate">
+            <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <span className="capitalize truncate">{todayFormatted}</span>
           </div>
 
-          <div className="flex items-center space-x-1 font-semibold text-slate-700">
-            <span>Tiến độ chung:</span>
+          <div className="flex items-center space-x-1 font-semibold text-slate-700 shrink-0 whitespace-nowrap">
+            <span>Tiến độ:</span>
             <span className="text-indigo-600 font-bold">
               {completedCount}/{state.chores.length}
             </span>
-            <span>việc</span>
           </div>
         </div>
 
@@ -404,75 +405,69 @@ export function App() {
           onOpenPenaltyModal={() => setIsPenaltyOpen(true)}
         />
 
-        {/* Filter Pills */}
-        <div className="flex items-center justify-between pt-1">
-          <div className="flex items-center space-x-1 bg-slate-200/70 p-1 rounded-2xl text-xs font-semibold overflow-x-auto">
-            <button
-              onClick={() => setActiveTab('my_chores')}
-              className={`px-2.5 py-1.5 rounded-xl transition flex items-center space-x-1 shrink-0 ${
-                activeTab === 'my_chores'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              <span>Của tôi ({myChores.length})</span>
-              {myPendingCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-amber-400" />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('all')}
-              className={`px-2.5 py-1.5 rounded-xl transition shrink-0 ${
-                activeTab === 'all'
-                  ? 'bg-white text-slate-800 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Cả phòng ({state.chores.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('pending')}
-              className={`px-2.5 py-1.5 rounded-xl transition shrink-0 ${
-                activeTab === 'pending'
-                  ? 'bg-white text-amber-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Chưa xong ({uncompletedCount})
-            </button>
-            <button
-              onClick={() => setActiveTab('completed')}
-              className={`px-2.5 py-1.5 rounded-xl transition shrink-0 ${
-                activeTab === 'completed'
-                  ? 'bg-white text-emerald-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Đã xong ({completedCount})
-            </button>
-          </div>
+        {/* Filter Pills with Smooth Horizontal Scroll without wrapping */}
+        <div className="flex items-center space-x-1.5 bg-slate-200/70 p-1 rounded-2xl text-xs font-semibold overflow-x-auto no-scrollbar scroll-smooth">
+          <button
+            onClick={() => setActiveTab('my_chores')}
+            className={`px-3 py-1.5 rounded-xl transition flex items-center space-x-1 shrink-0 whitespace-nowrap ${
+              activeTab === 'my_chores'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            <span>Của tôi ({myChores.length})</span>
+            {myPendingCount > 0 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            )}
+          </button>
 
           <button
-            onClick={() => setIsAddChoreOpen(true)}
-            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center space-x-1 shrink-0 ml-1"
+            onClick={() => setActiveTab('all')}
+            className={`px-3 py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${
+              activeTab === 'all'
+                ? 'bg-white text-slate-800 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
-            <span>+ Việc</span>
+            Cả phòng ({state.chores.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`px-3 py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${
+              activeTab === 'pending'
+                ? 'bg-white text-amber-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Chưa xong ({uncompletedCount})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('completed')}
+            className={`px-3 py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${
+              activeTab === 'completed'
+                ? 'bg-white text-emerald-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Đã xong ({completedCount})
           </button>
         </div>
 
         {/* Chores List */}
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {filteredChores.length === 0 ? (
-            <div className="text-center py-10 px-4 bg-white rounded-3xl border border-slate-200/80 space-y-2">
-              <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+            <div className="text-center py-10 px-4 bg-white rounded-2xl border border-slate-200/80 space-y-2">
+              <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mx-auto">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
               <h4 className="font-bold text-slate-800 text-xs">Không có việc nào ở mục này</h4>
               <p className="text-[11px] text-slate-500">
                 {activeTab === 'my_chores'
-                  ? 'Hôm nay bạn không có lịch việc nhà, hoặc đã hoàn thành hết!'
-                  : 'Tất cả công việc đã được xử lý.'}
+                  ? 'Hôm nay bạn không có việc nhà, hoặc đã hoàn thành hết!'
+                  : 'Tất cả công việc đã được hoàn tất.'}
               </p>
             </div>
           ) : (
@@ -488,33 +483,17 @@ export function App() {
             ))
           )}
         </div>
-
-        {/* PWA Promotion Callout */}
-        <div
-          onClick={() => setIsPWAOpen(true)}
-          className="p-3.5 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100 flex items-center justify-between cursor-pointer hover:border-indigo-200 transition"
-        >
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-slate-800">Cài app trực tiếp không tốn phí</div>
-              <div className="text-[11px] text-slate-500">
-                Ghim ra màn hình iPhone / Android dùng mượt mà
-              </div>
-            </div>
-          </div>
-          <ArrowRight className="w-4 h-4 text-indigo-600" />
-        </div>
       </main>
 
       {/* Floating Bottom Quick Zalo Trigger */}
-      <div className="fixed bottom-3 inset-x-0 max-w-md mx-auto px-4 z-20 pointer-events-none">
-        <div className="pointer-events-auto flex items-center space-x-2">
+      <div 
+        className="fixed inset-x-0 max-w-md mx-auto px-4 z-20 pointer-events-none"
+        style={{ bottom: 'max(env(safe-area-inset-bottom), 1rem)' }}
+      >
+        <div className="pointer-events-auto">
           <button
             onClick={() => setIsZaloOpen(true)}
-            className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl shadow-xl shadow-blue-500/25 flex items-center justify-center space-x-2 transition transform active:scale-98"
+            className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-blue-500/25 flex items-center justify-center space-x-2 transition transform active:scale-98"
           >
             <Share2 className="w-4 h-4" />
             <span>Gửi Bảng Nhắc Việc Vào Nhóm Zalo</span>
@@ -525,12 +504,28 @@ export function App() {
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-14 inset-x-0 max-w-xs mx-auto z-50 animate-in slide-in-from-top duration-200">
-          <div className="p-3 bg-slate-900/90 backdrop-blur-md text-white text-xs font-medium rounded-2xl shadow-xl text-center border border-white/10 flex items-center justify-center space-x-1.5">
+          <div className="p-2.5 bg-slate-900/90 backdrop-blur-md text-white text-xs font-medium rounded-xl shadow-xl text-center border border-white/10 flex items-center justify-center space-x-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
             <span>{toastMessage}</span>
           </div>
         </div>
       )}
+
+      {/* Menu Drawer */}
+      <MenuDrawer
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+        roomName={state.roomName}
+        roomCode={state.roomCode}
+        currentMember={currentMember}
+        isCloudConnected={isCloudConnected}
+        onOpenUserSelect={() => setIsUserSelectOpen(true)}
+        onOpenMembers={() => setIsMembersOpen(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenPenalty={() => setIsPenaltyOpen(true)}
+        onOpenCloudSync={() => setIsCloudSyncOpen(true)}
+        onOpenPWA={() => setIsPWAOpen(true)}
+      />
 
       {/* Interactive Modals */}
       <UserSelectModal
