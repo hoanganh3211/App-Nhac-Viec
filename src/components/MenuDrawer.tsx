@@ -3,11 +3,11 @@ import {
   X, 
   Users, 
   History, 
-  Coins, 
   Smartphone, 
   UserCheck, 
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Scale
 } from 'lucide-react';
 import { Member } from '../types';
 
@@ -20,7 +20,7 @@ interface MenuDrawerProps {
   onOpenUserSelect: () => void;
   onOpenMembers: () => void;
   onOpenHistory: () => void;
-  onOpenPenalty: () => void;
+  onOpenRules: () => void;
   onOpenPWA: () => void;
 }
 
@@ -33,7 +33,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   onOpenUserSelect,
   onOpenMembers,
   onOpenHistory,
-  onOpenPenalty,
+  onOpenRules,
   onOpenPWA,
 }) => {
   if (!isOpen) return null;
@@ -98,7 +98,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </div>
               <div>
                 <div className="text-xs font-semibold text-slate-800">Đổi người dùng ("Tôi là ai")</div>
-                <div className="text-[11px] text-slate-400">Chọn hoặc tạo tài khoản của bạn trong phòng</div>
+                <div className="text-[11px] text-slate-400">Chọn hoặc tạo tài khoản bạn trong phòng</div>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
@@ -115,7 +115,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </div>
               <div>
                 <div className="text-xs font-semibold text-slate-800">Thành viên phòng</div>
-                <div className="text-[11px] text-slate-400">Xem và quản lý người ở chung phòng</div>
+                <div className="text-[11px] text-slate-400">Xem và quản lý người ở chung</div>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
@@ -131,25 +131,25 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                 <History className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs font-semibold text-slate-800">Lịch sử làm việc</div>
-                <div className="text-[11px] text-slate-400">Nhật ký ai đã làm gì, lúc mấy giờ</div>
+                <div className="text-xs font-semibold text-slate-800">Lịch sử làm việc & Điểm</div>
+                <div className="text-[11px] text-slate-400">Nhật ký hoàn thành, trừ điểm trễ</div>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
           </button>
 
-          {/* Penalty fund */}
+          {/* Rules & Points breakdown */}
           <button
-            onClick={() => handleAction(onOpenPenalty)}
+            onClick={() => handleAction(onOpenRules)}
             className="w-full p-3 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group"
           >
             <div className="flex items-center space-x-3">
               <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <Coins className="w-4 h-4" />
+                <Scale className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs font-semibold text-slate-800">Quỹ phạt vui vẻ</div>
-                <div className="text-[11px] text-slate-400">Xem quỹ trà sữa từ tiền trễ hạn</div>
+                <div className="text-xs font-semibold text-slate-800">Quy tắc điểm & Nhượng việc</div>
+                <div className="text-[11px] text-slate-400">Trừ điểm trễ, nhượng việc, hoàn trả +1đ</div>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />

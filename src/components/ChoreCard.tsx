@@ -1,23 +1,28 @@
 import React from 'react';
-import { CheckCircle2, Circle, Clock, Flame, Send, RotateCw } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Flame, Send, RotateCw, ArrowRightLeft, Sparkles } from 'lucide-react';
 import { Chore, Member } from '../types';
 
 interface ChoreCardProps {
   chore: Chore;
   members: Member[];
+  currentUserId?: string | null;
   onToggleComplete: (choreId: string) => void;
   onNudge: (chore: Chore, assignee?: Member) => void;
   onRotateNext: (choreId: string) => void;
+  onOpenTransfer: (chore: Chore) => void;
 }
 
 export const ChoreCard: React.FC<ChoreCardProps> = ({
   chore,
   members,
+  currentUserId,
   onToggleComplete,
   onNudge,
   onRotateNext,
+  onOpenTransfer,
 }) => {
   const assignee = members.find((m) => m.id === chore.assignedTo);
+  const isMine = Boolean(currentUserId && chore.assignedTo === currentUserId);
 
   const isOverdue = (): boolean => {
     if (chore.isCompletedToday) return false;
@@ -29,6 +34,7 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
   };
 
   const overdue = isOverdue();
+  const rewardPoints = chore.nextBonusPoints || chore.points;
 
   return (
     <div
@@ -58,13 +64,15 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
 
           {/* Middle: Title & Badges */}
           <div className="flex-1 min-w-0">
-            <h3
-              className={`font-semibold text-sm leading-snug truncate ${
-                chore.isCompletedToday ? 'line-through text-slate-400' : 'text-slate-800'
-              }`}
-            >
-              {chore.title}
-            </h3>
+            <div className="flex items-center space-x-1">
+              <h3
+                className={`font-semibold text-sm leading-snug truncate ${
+                  chore.isCompletedToday ? 'line-through text-slate-400' : 'text-slate-800'
+                }`}
+              >
+                {chore.title}
+              </h3>
+            </div>
 
             {chore.description && (
               <p className="text-[11px] text-slate-500 truncate mt-0.5">
@@ -72,7 +80,7 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
               </p>
             )}
 
-            {/* Badges: Time & Points */}
+            {/* Badges: Time, Points, Bonus */}
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
               <span
                 className={`inline-flex items-center space-x-1 text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 whitespace-nowrap ${
@@ -88,15 +96,22 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
                   {chore.isCompletedToday
                     ? `Xong ${chore.completedAt || ''}`
                     : overdue
-                    ? `Trễ (${chore.dueTime})`
+                    ? `Trễ hạn (${chore.dueTime})`
                     : chore.dueTime}
                 </span>
               </span>
 
               <span className="inline-flex items-center space-x-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-50 text-amber-800 border border-amber-200/60 shrink-0 whitespace-nowrap">
                 <Flame className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
-                <span>+{chore.points}đ</span>
+                <span>+{rewardPoints}đ</span>
               </span>
+
+              {chore.nextBonusPoints && !chore.isCompletedToday && (
+                <span className="inline-flex items-center space-x-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60 shrink-0 whitespace-nowrap">
+                  <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
+                  <span>Thưởng hoàn trả (+1đ)</span>
+                </span>
+              )}
             </div>
           </div>
 
@@ -127,7 +142,7 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
               <div className="flex items-center space-x-1 bg-slate-100 px-2 py-0.5 rounded-xl truncate">
                 <span className="text-xs shrink-0">{assignee.avatar}</span>
                 <span className="font-semibold text-slate-800 text-[11px] truncate">
-                  {assignee.name}
+                  {assignee.name} {isMine && '(Bạn)'}
                 </span>
                 {assignee.streak > 1 && (
                   <span className="text-[9px] text-amber-600 font-bold shrink-0">
@@ -142,7 +157,19 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center space-x-1 shrink-0">
-            {!chore.isCompletedToday && (
+            {/* Nhượng việc button (if assigned to current user & not completed) */}
+            {isMine && !chore.isCompletedToday && (
+              <button
+                onClick={() => onOpenTransfer(chore)}
+                title="Nhượng lại việc cho người khác (-điểm việc)"
+                className="inline-flex items-center space-x-1 px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-[11px] font-semibold transition border border-amber-200/60"
+              >
+                <ArrowRightLeft className="w-2.5 h-2.5" />
+                <span>Nhượng</span>
+              </button>
+            )}
+
+            {!chore.isCompletedToday && !isMine && (
               <button
                 onClick={() => onNudge(chore, assignee)}
                 title="Nhắc riêng người này qua Zalo"

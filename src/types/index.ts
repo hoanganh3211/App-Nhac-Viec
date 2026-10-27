@@ -1,11 +1,12 @@
 export interface Member {
   id: string;
   name: string;
-  avatar: string; // emoji or initial
+  avatar: string;
   color: string;
   points: number; // Điểm tích lũy công việc
   streak: number; // Chuỗi ngày hoàn thành liên tục
-  zaloName?: string; // Tên hiển thị/tag trong Zalo
+  lateViolations: number; // Số lần trễ hạn (dùng để phạt trừ điểm nặng hơn nếu tái phạm)
+  zaloName?: string;
 }
 
 export type FrequencyType = 'daily' | 'alternate' | 'weekly' | 'custom';
@@ -15,16 +16,19 @@ export interface Chore {
   id: string;
   title: string;
   category: 'cleaning' | 'kitchen' | 'trash' | 'shopping' | 'other';
-  points: number;
+  points: number; // Điểm cơ bản (việc nặng nhiều điểm)
   frequency: FrequencyType;
-  dueTime: string; // Ví dụ: "20:00"
-  assignedTo: string; // memberId
+  dueTime: string; // Ví dụ "20:00"
+  assignedTo: string; // memberId đang phụ trách
   rotationRule: RotationRule;
   isCompletedToday: boolean;
   completedAt?: string;
   completedBy?: string;
   icon: string;
   description?: string;
+  originalAssignee?: string; // Người nhượng việc ban đầu (để hoàn trả ở chu kỳ kế tiếp)
+  nextBonusPoints?: number; // Điểm thưởng khi người nhượng làm lại ở lượt sau: (điểm việc + 1)
+  isLatePenalized?: boolean; // Đánh dấu đã trừ điểm trễ hôm nay
 }
 
 export interface ChoreLog {
@@ -34,18 +38,23 @@ export interface ChoreLog {
   memberId: string;
   memberName: string;
   completedAt: string;
-  pointsEarned: number;
+  pointsEarned: number; // Dương nếu cộng, Âm nếu bị trừ điểm trễ
+  type?: 'completed' | 'late_penalty' | 'transfer_fee' | 'transfer_reward' | 'recovery_bonus';
   note?: string;
 }
 
-export interface PenaltyRecord {
+export interface TransferRequest {
   id: string;
-  memberId: string;
-  memberName: string;
-  amount: number;
-  reason: string;
-  date: string;
-  status: 'pending' | 'paid';
+  choreId: string;
+  choreTitle: string;
+  choreIcon: string;
+  chorePoints: number;
+  fromMemberId: string;
+  fromMemberName: string;
+  toMemberId: string;
+  toMemberName: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
 }
 
 export interface AppState {
@@ -54,7 +63,6 @@ export interface AppState {
   members: Member[];
   chores: Chore[];
   logs: ChoreLog[];
-  penalties: PenaltyRecord[];
+  transferRequests: TransferRequest[];
   lastDateChecked: string;
-  penaltyRate: number;
 }

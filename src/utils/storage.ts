@@ -13,7 +13,6 @@ export const getTodayDateString = (): string => {
 export const INITIAL_STATE: AppState = {
   roomName: 'Phòng Trọ 302 - Vui Vẻ',
   roomCode: 'PHONG-302',
-  penaltyRate: 10000,
   lastDateChecked: getTodayDateString(),
   members: [
     {
@@ -23,6 +22,7 @@ export const INITIAL_STATE: AppState = {
       color: 'bg-blue-500 text-white',
       points: 14,
       streak: 4,
+      lateViolations: 0,
       zaloName: 'Nam Nguyễn',
     },
     {
@@ -32,6 +32,7 @@ export const INITIAL_STATE: AppState = {
       color: 'bg-emerald-500 text-white',
       points: 12,
       streak: 2,
+      lateViolations: 0,
       zaloName: 'Huy Tran',
     },
     {
@@ -41,6 +42,7 @@ export const INITIAL_STATE: AppState = {
       color: 'bg-violet-500 text-white',
       points: 10,
       streak: 1,
+      lateViolations: 1,
       zaloName: 'Minh Le',
     },
   ],
@@ -110,7 +112,7 @@ export const INITIAL_STATE: AppState = {
       rotationRule: 'round-robin',
       isCompletedToday: false,
       icon: '🛒',
-      description: 'Kiểm tra xem phòng hết giấy vệ sinh, nước rửa bát hay gia vị thì mua bù',
+      description: 'Kiểm tra xem phòng hết giấy vệ sinh hay gia vị thì mua bù',
     },
   ],
   logs: [
@@ -120,8 +122,9 @@ export const INITIAL_STATE: AppState = {
       choreTitle: 'Hút bụi & Lau sàn phòng khách',
       memberId: 'm3',
       memberName: 'Lê Minh',
-      completedAt: 'Hôm nay lúc 15:20',
+      completedAt: 'Hôm nay 15:20',
       pointsEarned: 3,
+      type: 'completed',
     },
     {
       id: 'l2',
@@ -129,33 +132,15 @@ export const INITIAL_STATE: AppState = {
       choreTitle: 'Đổ rác & Thay túi rác',
       memberId: 'm1',
       memberName: 'Nguyễn Nam',
-      completedAt: 'Hôm qua lúc 20:15',
+      completedAt: 'Hôm qua 20:15',
       pointsEarned: 1,
-    },
-    {
-      id: 'l3',
-      choreId: 'c2',
-      choreTitle: 'Rửa bát & Lau bồn rửa',
-      memberId: 'm2',
-      memberName: 'Trần Huy',
-      completedAt: 'Hôm qua lúc 21:40',
-      pointsEarned: 2,
+      type: 'completed',
     },
   ],
-  penalties: [
-    {
-      id: 'p1',
-      memberId: 'm3',
-      memberName: 'Lê Minh',
-      amount: 10000,
-      reason: 'Quên đổ rác ngày 24/10',
-      date: '24/10/2026',
-      status: 'paid',
-    },
-  ],
+  transferRequests: [],
 };
 
-// Next assignee calculation based on fairness algorithm
+// Next assignee calculation
 export const getNextAssignee = (
   currentAssigneeId: string,
   rule: RotationRule,
@@ -165,28 +150,41 @@ export const getNextAssignee = (
   if (rule === 'fixed') return currentAssigneeId;
 
   if (rule === 'least-points') {
-    // Sort by points ascending (person with lowest karma gets the next heavy task)
     const sorted = [...members].sort((a, b) => a.points - b.points);
     return sorted[0].id;
   }
 
-  // Default: round-robin (xoay vòng tuần tự)
+  // Round-robin
   const currentIndex = members.findIndex((m) => m.id === currentAssigneeId);
   if (currentIndex === -1) return members[0].id;
   const nextIndex = (currentIndex + 1) % members.length;
   return members[nextIndex].id;
 };
 
-// Check and handle day rollover (chuyển sang ngày mới)
+// Rollover for new day
 export const handleDayRollover = (state: AppState): AppState => {
   const today = getTodayDateString();
   if (state.lastDateChecked === today) {
     return state;
   }
 
-  // It's a new day! Rotate uncompleted tasks or rotate completed ones
   const updatedChores: Chore[] = state.chores.map((chore) => {
-    // If it was completed yesterday, rotate to the next person and mark uncompleted
+    // If this chore was transferred to someone else previously:
+    // "việc sẽ hoàn trả lại cho người nhượng nhưng người nhượng sẽ được (điểm hiện tại của việc + 1)"
+    if (chore.originalAssignee) {
+      const originalUser = chore.originalAssignee;
+      return {
+        ...chore,
+        assignedTo: originalUser,
+        originalAssignee: undefined,
+        nextBonusPoints: chore.points + 1, // Điểm thưởng khi làm lại ở lượt sau
+        isCompletedToday: false,
+        isLatePenalized: false,
+        completedAt: undefined,
+        completedBy: undefined,
+      };
+    }
+
     const nextAssignee = chore.isCompletedToday
       ? getNextAssignee(chore.assignedTo, chore.rotationRule, state.members)
       : chore.assignedTo;
@@ -195,6 +193,7 @@ export const handleDayRollover = (state: AppState): AppState => {
       ...chore,
       assignedTo: nextAssignee,
       isCompletedToday: false,
+      isLatePenalized: false,
       completedAt: undefined,
       completedBy: undefined,
     };
@@ -215,6 +214,24 @@ export const loadState = (): AppState => {
       return INITIAL_STATE;
     }
     const parsed = JSON.parse(raw);
+    
+    // Clean legacy penalties if existing from older versions
+    if ('penalties' in parsed) {
+      delete parsed.penalties;
+      delete parsed.penaltyRate;
+    }
+    if (!parsed.transferRequests) {
+      parsed.transferRequests = [];
+    }
+
+    // Ensure all members have lateViolations field
+    if (parsed.members) {
+      parsed.members = parsed.members.map((m: any) => ({
+        ...m,
+        lateViolations: m.lateViolations ?? 0,
+      }));
+    }
+
     const rolloverState = handleDayRollover(parsed);
     saveState(rolloverState);
     return rolloverState;

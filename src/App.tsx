@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   Sparkles, 
@@ -7,7 +7,7 @@ import {
   Share2, 
   UserCheck
 } from 'lucide-react';
-import { AppState, Chore, Member } from './types';
+import { AppState, Chore, Member, TransferRequest } from './types';
 import { loadState, saveState, getNextAssignee } from './utils/storage';
 import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
@@ -28,10 +28,11 @@ import { AddChoreModal } from './components/AddChoreModal';
 import { MemberManagerModal } from './components/MemberManagerModal';
 import { ZaloReminderModal } from './components/ZaloReminderModal';
 import { HistoryModal } from './components/HistoryModal';
-import { PenaltyModal } from './components/PenaltyModal';
+import { RulesModal } from './components/RulesModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { UserSelectModal } from './components/UserSelectModal';
 import { MenuDrawer } from './components/MenuDrawer';
+import { TransferChoreModal } from './components/TransferChoreModal';
 import { shareToZalo } from './utils/zalo';
 
 const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
@@ -54,8 +55,9 @@ export function App() {
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isZaloOpen, setIsZaloOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isPenaltyOpen, setIsPenaltyOpen] = useState(false);
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isPWAOpen, setIsPWAOpen] = useState(false);
+  const [transferTargetChore, setTransferTargetChore] = useState<Chore | null>(null);
 
   // Check URL query for room code (?room=xyz) on mount
   useEffect(() => {
@@ -79,7 +81,7 @@ export function App() {
     }
   }, [currentUserId, state.members]);
 
-  // Persist state to localStorage and push silently to Cloud (handled by dev setup)
+  // Persist state to localStorage and push silently to Cloud
   useEffect(() => {
     saveState(state);
     pushStateToCloud(state);
@@ -125,21 +127,108 @@ export function App() {
     return state.chores.filter((c) => c.assignedTo === currentUserId);
   }, [state.chores, currentUserId]);
 
-  // Periodic notification check (runs every 60s for current user's tasks ONLY)
-  useEffect(() => {
-    checkAndNotifyMyChores(state.chores, currentUserId, currentMember);
-    const interval = setInterval(() => {
-      checkAndNotifyMyChores(state.chores, currentUserId, currentMember);
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [state.chores, currentUserId, currentMember]);
+  // Incoming transfer requests for current user
+  const incomingTransferRequests = useMemo(() => {
+    if (!currentUserId) return [];
+    return (state.transferRequests || []).filter(
+      (req) => req.toMemberId === currentUserId && req.status === 'pending'
+    );
+  }, [state.transferRequests, currentUserId]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
-    }, 3000);
+    }, 3500);
   };
+
+  // Check Overdue and Apply Late Penalties (Quy tắc trừ điểm trễ & tái phạm)
+  const checkOverduePenalties = useCallback(() => {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    let hasPenaltyApplied = false;
+    let updatedMembers = [...state.members];
+    let updatedLogs = [...state.logs];
+
+    const updatedChores = state.chores.map((chore) => {
+      if (chore.isCompletedToday || chore.isLatePenalized) return chore;
+
+      const [dueH, dueM] = chore.dueTime.split(':').map(Number);
+      const dueMinutes = dueH * 60 + dueM;
+
+      // Past due
+      if (currentMinutes > dueMinutes) {
+        const assignee = updatedMembers.find((m) => m.id === chore.assignedTo);
+        if (!assignee) return chore;
+
+        // Deduction rule:
+        // Lần đầu: trừ số điểm của việc.
+        // Tái phạm: trừ (điểm hiện tại của việc + 2)!
+        const penaltyPoints =
+          assignee.lateViolations > 0 ? chore.points + 2 : chore.points;
+
+        updatedMembers = updatedMembers.map((m) =>
+          m.id === assignee.id
+            ? {
+                ...m,
+                points: m.points - penaltyPoints,
+                lateViolations: m.lateViolations + 1,
+                streak: 0,
+              }
+            : m
+        );
+
+        const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        updatedLogs = [
+          {
+            id: 'log_late_' + Date.now() + '_' + chore.id,
+            choreId: chore.id,
+            choreTitle: chore.title,
+            memberId: assignee.id,
+            memberName: assignee.name,
+            completedAt: `Hôm nay ${timeStr}`,
+            pointsEarned: -penaltyPoints,
+            type: 'late_penalty',
+            note:
+              assignee.lateViolations > 0
+                ? `Tái phạm trễ hạn (-(điểm việc + 2))`
+                : `Trễ hạn việc nhà`,
+          },
+          ...updatedLogs,
+        ];
+
+        hasPenaltyApplied = true;
+        showToast(`⚠️ ${assignee.name} bị trừ ${penaltyPoints}đ do trễ "${chore.title}"!`);
+
+        return {
+          ...chore,
+          isLatePenalized: true,
+        };
+      }
+      return chore;
+    });
+
+    if (hasPenaltyApplied) {
+      setState((prev) => ({
+        ...prev,
+        members: updatedMembers,
+        chores: updatedChores,
+        logs: updatedLogs,
+      }));
+    }
+  }, [state.chores, state.members, state.logs]);
+
+  // Periodic checks (notifications + late penalty checks every 60s)
+  useEffect(() => {
+    checkAndNotifyMyChores(state.chores, currentUserId, currentMember);
+    checkOverduePenalties();
+    const interval = setInterval(() => {
+      checkAndNotifyMyChores(state.chores, currentUserId, currentMember);
+      checkOverduePenalties();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [state.chores, currentUserId, currentMember, checkOverduePenalties]);
 
   const handleSelectUser = (id: string) => {
     setCurrentUserId(id);
@@ -159,7 +248,7 @@ export function App() {
     }
   };
 
-  // Toggle chore completed
+  // Toggle chore completed (Hoàn thành việc & Cộng điểm / Thưởng hoàn trả)
   const handleToggleComplete = (choreId: string) => {
     const targetChore = state.chores.find((c) => c.id === choreId);
     if (!targetChore) return;
@@ -168,16 +257,23 @@ export function App() {
     const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const assignee = state.members.find((m) => m.id === targetChore.assignedTo);
 
+    // Calculate reward points:
+    // If nextBonusPoints exists (do trước đó từng nhượng việc): thưởng (điểm việc + 1)
+    const earnedPoints = targetChore.nextBonusPoints || targetChore.points;
+
     if (willBeCompleted) {
       playSuccessSound();
       confetti({
-        particleCount: 60,
+        particleCount: 65,
         spread: 55,
         origin: { y: 0.7 },
         colors: ['#6366f1', '#10b981', '#f59e0b', '#ec4899'],
       });
 
-      showToast(`🎉 +${targetChore.points} điểm cho ${assignee?.name || 'bạn'}!`);
+      const bonusMsg = targetChore.nextBonusPoints
+        ? ` (Đã cộng thêm +1đ thưởng hoàn trả!)`
+        : '';
+      showToast(`🎉 +${earnedPoints} điểm cho ${assignee?.name || 'bạn'}!${bonusMsg}`);
     }
 
     const updatedMembers = state.members.map((member) => {
@@ -185,9 +281,13 @@ export function App() {
         return {
           ...member,
           points: willBeCompleted
-            ? member.points + targetChore.points
-            : Math.max(0, member.points - targetChore.points),
+            ? member.points + earnedPoints
+            : member.points - earnedPoints,
           streak: willBeCompleted ? member.streak + 1 : Math.max(0, member.streak - 1),
+          // Giảm vi phạm trễ nếu làm đúng hạn
+          lateViolations: willBeCompleted
+            ? Math.max(0, member.lateViolations - 1)
+            : member.lateViolations,
         };
       }
       return member;
@@ -200,6 +300,7 @@ export function App() {
           isCompletedToday: willBeCompleted,
           completedAt: willBeCompleted ? nowTimeStr : undefined,
           completedBy: willBeCompleted ? chore.assignedTo : undefined,
+          nextBonusPoints: willBeCompleted ? undefined : chore.nextBonusPoints,
         };
       }
       return chore;
@@ -215,7 +316,9 @@ export function App() {
           memberId: targetChore.assignedTo,
           memberName: assignee?.name || 'Thành viên',
           completedAt: `Hôm nay ${nowTimeStr}`,
-          pointsEarned: targetChore.points,
+          pointsEarned: earnedPoints,
+          type: targetChore.nextBonusPoints ? 'recovery_bonus' : 'completed',
+          note: targetChore.nextBonusPoints ? 'Thưởng hoàn trả (+1đ)' : undefined,
         },
         ...state.logs,
       ];
@@ -227,6 +330,116 @@ export function App() {
       chores: updatedChores,
       logs: updatedLogs,
     }));
+  };
+
+  // Cơ chế nhượng việc: Khởi tạo gửi lời mời nhượng việc
+  const handleInitiateTransfer = (chore: Chore, targetMemberId: string) => {
+    if (!currentMember) return;
+    const targetMember = state.members.find((m) => m.id === targetMemberId);
+    if (!targetMember) return;
+
+    const newRequest: TransferRequest = {
+      id: 'req_' + Date.now(),
+      choreId: chore.id,
+      choreTitle: chore.title,
+      choreIcon: chore.icon,
+      chorePoints: chore.points,
+      fromMemberId: currentMember.id,
+      fromMemberName: currentMember.name,
+      toMemberId: targetMember.id,
+      toMemberName: targetMember.name,
+      status: 'pending',
+      createdAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setState((prev) => ({
+      ...prev,
+      transferRequests: [newRequest, ...(prev.transferRequests || [])],
+    }));
+
+    showToast(`Đã gửi lời mời nhượng việc "${chore.title}" cho ${targetMember.name}!`);
+  };
+
+  // Người nhận: Đồng ý nhận việc (Người nhượng mất điểm, Người nhận được gán việc)
+  const handleAcceptTransfer = (requestId: string) => {
+    const req = (state.transferRequests || []).find((r) => r.id === requestId);
+    if (!req) return;
+
+    const chore = state.chores.find((c) => c.id === req.choreId);
+    if (!chore) return;
+
+    const fromMember = state.members.find((m) => m.id === req.fromMemberId);
+    const toMember = state.members.find((m) => m.id === req.toMemberId);
+
+    // 1. Trừ điểm người nhượng (mất cơ số điểm đó)
+    const updatedMembers = state.members.map((m) => {
+      if (m.id === req.fromMemberId) {
+        return {
+          ...m,
+          points: m.points - req.chorePoints,
+        };
+      }
+      return m;
+    });
+
+    // 2. Chuyển việc cho người nhận, lưu originalAssignee để chu kỳ sau hoàn trả lại
+    const updatedChores = state.chores.map((c) => {
+      if (c.id === req.choreId) {
+        return {
+          ...c,
+          assignedTo: req.toMemberId,
+          originalAssignee: req.fromMemberId, // Lưu để hoàn trả ở lượt sau
+          nextBonusPoints: c.points + 1, // Lượt sau người nhượng làm lại được (điểm + 1)
+        };
+      }
+      return c;
+    });
+
+    // 3. Ghi log phí nhượng việc
+    const updatedLogs: typeof state.logs = [
+      {
+        id: 'log_trans_' + Date.now(),
+        choreId: req.choreId,
+        choreTitle: req.choreTitle,
+        memberId: req.fromMemberId,
+        memberName: fromMember?.name || 'Người nhượng',
+        completedAt: `Hôm nay ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
+        pointsEarned: -req.chorePoints,
+        type: 'transfer_fee',
+        note: `Nhượng việc cho ${toMember?.name || 'bạn cùng phòng'}`,
+      },
+      ...state.logs,
+    ];
+
+    // 4. Cập nhật request status
+    const updatedRequests = (state.transferRequests || []).map((r) =>
+      r.id === requestId ? { ...r, status: 'accepted' as const } : r
+    );
+
+    setState((prev) => ({
+      ...prev,
+      members: updatedMembers,
+      chores: updatedChores,
+      logs: updatedLogs,
+      transferRequests: updatedRequests,
+    }));
+
+    showToast(`Bạn đã nhận việc "${req.choreTitle}". Hoàn thành sẽ được +${req.chorePoints}đ!`);
+  };
+
+  // Người nhận: Từ chối nhận việc
+  const handleDeclineTransfer = (requestId: string) => {
+    const req = (state.transferRequests || []).find((r) => r.id === requestId);
+    const updatedRequests = (state.transferRequests || []).map((r) =>
+      r.id === requestId ? { ...r, status: 'declined' as const } : r
+    );
+
+    setState((prev) => ({
+      ...prev,
+      transferRequests: updatedRequests,
+    }));
+
+    showToast(`Đã từ chối nhận việc "${req?.choreTitle}".`);
   };
 
   const handleRotateNext = (choreId: string) => {
@@ -247,7 +460,7 @@ export function App() {
   const handleNudge = async (chore: Chore, assignee?: Member) => {
     playNudgeSound();
     const tag = assignee ? `@${assignee.zaloName || assignee.name}` : 'bạn';
-    const text = `📢 [NHẮC VIỆC RIÊNG] Alo ${tag} ơi!\nĐến giờ làm "${chore.title}" rồi nè (${chore.dueTime}). Làm xong nhớ mở app tick nhé! 🧹\n🔗 ${window.location.origin}`;
+    const text = `📢 [NHẮC VIỆC RIÊNG] Alo ${tag} ơi!\nĐến giờ làm "${chore.title}" rồi nè (${chore.dueTime}). Quá giờ sẽ bị trừ -${chore.points}đ đó nha! 🧹\n🔗 ${window.location.origin}`;
     
     await shareToZalo(text);
     showToast(`Đã chuẩn bị lời nhắc cho ${assignee?.name}! Hãy dán vào Zalo nhé.`);
@@ -263,7 +476,7 @@ export function App() {
       ...prev,
       chores: [newChore, ...prev.chores],
     }));
-    showToast(`Đã thêm việc "${newChore.title}"!`);
+    showToast(`Đã thêm việc "${newChore.title}" (+${newChore.points}đ)!`);
   };
 
   const handleAddMember = (name: string, avatar: string, zaloName: string) => {
@@ -274,6 +487,7 @@ export function App() {
       color: 'bg-indigo-500 text-white',
       points: 0,
       streak: 0,
+      lateViolations: 0,
       zaloName,
     };
     setState((prev) => ({
@@ -299,32 +513,6 @@ export function App() {
   const handleUpdateRoomName = (name: string) => {
     setState((prev) => ({ ...prev, roomName: name }));
     showToast('Đã cập nhật tên phòng!');
-  };
-
-  const handleAddPenalty = (memberId: string, amount: number, reason: string) => {
-    const member = state.members.find((m) => m.id === memberId);
-    const newPenalty = {
-      id: 'pen_' + Date.now(),
-      memberId,
-      memberName: member?.name || 'Thành viên',
-      amount,
-      reason,
-      date: new Date().toLocaleDateString('vi-VN'),
-      status: 'pending' as const,
-    };
-    setState((prev) => ({
-      ...prev,
-      penalties: [newPenalty, ...prev.penalties],
-    }));
-    showToast(`Đã ghi phạt ${amount.toLocaleString('vi-VN')}đ vào quỹ!`);
-  };
-
-  const handleMarkPaid = (id: string) => {
-    setState((prev) => ({
-      ...prev,
-      penalties: prev.penalties.map((p) => (p.id === id ? { ...p, status: 'paid' } : p)),
-    }));
-    showToast('Đã ghi nhận nộp phạt.');
   };
 
   // Filter chores
@@ -355,7 +543,7 @@ export function App() {
         paddingBottom: 'max(env(safe-area-inset-bottom), 5rem)',
       }}
     >
-      {/* Sleek, Non-wrapping Top Header */}
+      {/* Sleek Top Header */}
       <Navbar
         roomName={state.roomName}
         uncompletedCount={uncompletedCount}
@@ -363,16 +551,20 @@ export function App() {
         onOpenMenu={() => setIsMenuOpen(true)}
       />
 
-      {/* Main Scrollable Content */}
+      {/* Main Content */}
       <main className="p-3.5 space-y-3.5 flex-1">
-        {/* Personalized Task Highlight Banner */}
+        {/* Personalized Task Highlight Banner & Incoming Transfer Alert */}
         <PersonalTaskBanner
           currentMember={currentMember}
           myChores={myChores}
+          incomingRequests={incomingTransferRequests}
           onToggleComplete={handleToggleComplete}
           onRequestNotification={handleRequestNotification}
           notificationPermission={notificationPermission}
           onOpenUserSelect={() => setIsUserSelectOpen(true)}
+          onOpenTransfer={(chore) => setTransferTargetChore(chore)}
+          onAcceptTransfer={handleAcceptTransfer}
+          onDeclineTransfer={handleDeclineTransfer}
         />
 
         {/* Date & Quick Progress */}
@@ -390,14 +582,10 @@ export function App() {
           </div>
         </div>
 
-        {/* Fairness & Karma Board */}
-        <FairnessBoard
-          members={state.members}
-          penalties={state.penalties}
-          onOpenPenaltyModal={() => setIsPenaltyOpen(true)}
-        />
+        {/* Fairness & Karma Board (Điểm tích lũy & Quy tắc trừ điểm) */}
+        <FairnessBoard members={state.members} />
 
-        {/* Filter Pills with Smooth Horizontal Scroll without wrapping */}
+        {/* Filter Tabs */}
         <div className="flex items-center space-x-1.5 bg-slate-200/70 p-1 rounded-2xl text-xs font-semibold overflow-x-auto no-scrollbar scroll-smooth">
           <button
             onClick={() => setActiveTab('my_chores')}
@@ -468,9 +656,11 @@ export function App() {
                 key={chore.id}
                 chore={chore}
                 members={state.members}
+                currentUserId={currentUserId}
                 onToggleComplete={handleToggleComplete}
                 onNudge={handleNudge}
                 onRotateNext={handleRotateNext}
+                onOpenTransfer={(c) => setTransferTargetChore(c)}
               />
             ))
           )}
@@ -503,7 +693,7 @@ export function App() {
         </div>
       )}
 
-      {/* Menu Drawer (Nơi DUY NHẤT để đổi người dùng và mở các mục phụ) */}
+      {/* Menu Drawer */}
       <MenuDrawer
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
@@ -513,11 +703,27 @@ export function App() {
         onOpenUserSelect={() => setIsUserSelectOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
-        onOpenPenalty={() => setIsPenaltyOpen(true)}
+        onOpenRules={() => setIsRulesOpen(true)}
         onOpenPWA={() => setIsPWAOpen(true)}
       />
 
-      {/* Interactive Modals */}
+      {/* Transfer Chore Modal (Nhượng việc) */}
+      <TransferChoreModal
+        isOpen={Boolean(transferTargetChore)}
+        onClose={() => setTransferTargetChore(null)}
+        chore={transferTargetChore}
+        currentMember={currentMember}
+        members={state.members}
+        onConfirmTransfer={handleInitiateTransfer}
+      />
+
+      {/* Rules Modal */}
+      <RulesModal
+        isOpen={isRulesOpen}
+        onClose={() => setIsRulesOpen(false)}
+      />
+
+      {/* User Select Modal */}
       <UserSelectModal
         isOpen={isUserSelectOpen}
         onClose={() => setIsUserSelectOpen(false)}
@@ -527,6 +733,7 @@ export function App() {
         onAddNewMember={handleAddMember}
       />
 
+      {/* Add Chore Modal */}
       <AddChoreModal
         isOpen={isAddChoreOpen}
         onClose={() => setIsAddChoreOpen(false)}
@@ -534,6 +741,7 @@ export function App() {
         members={state.members}
       />
 
+      {/* Member Manager Modal */}
       <MemberManagerModal
         isOpen={isMembersOpen}
         onClose={() => setIsMembersOpen(false)}
@@ -544,6 +752,7 @@ export function App() {
         onDeleteMember={handleDeleteMember}
       />
 
+      {/* Zalo Reminder Modal */}
       <ZaloReminderModal
         isOpen={isZaloOpen}
         onClose={() => setIsZaloOpen(false)}
@@ -552,21 +761,14 @@ export function App() {
         members={state.members}
       />
 
+      {/* History Modal */}
       <HistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         logs={state.logs}
       />
 
-      <PenaltyModal
-        isOpen={isPenaltyOpen}
-        onClose={() => setIsPenaltyOpen(false)}
-        penalties={state.penalties}
-        members={state.members}
-        onAddPenalty={handleAddPenalty}
-        onMarkPaid={handleMarkPaid}
-      />
-
+      {/* PWA Install Modal */}
       <PWAInstallModal
         isOpen={isPWAOpen}
         onClose={() => setIsPWAOpen(false)}
