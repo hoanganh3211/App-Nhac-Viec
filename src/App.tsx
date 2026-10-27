@@ -8,7 +8,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { AppState, Chore, Member, TransferRequest } from './types';
-import { loadState, saveState, getNextAssignee, getTodayDateString } from './utils/storage';
+import { loadState, saveState, getTodayDateString, autoBalanceChores } from './utils/storage';
 import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
   getNotificationPermission, 
@@ -534,19 +534,11 @@ export function App() {
     return newCode;
   };
 
-  const handleRotateNext = (choreId: string) => {
-    const chore = state.chores.find((c) => c.id === choreId);
-    if (!chore) return;
-
-    const nextId = getNextAssignee(chore.assignedTo, chore.rotationRule, state.members);
-    const nextMember = state.members.find((m) => m.id === nextId);
-
-    const updatedChores = state.chores.map((c) =>
-      c.id === choreId ? { ...c, assignedTo: nextId } : c
-    );
-
-    setState((prev) => ({ ...prev, chores: updatedChores }));
-    showToast(`Đã chuyển việc cho ${nextMember?.name || 'người tiếp theo'}`);
+  // Tự động phân chia việc công bằng cho các thành viên
+  const handleAutoBalance = () => {
+    const balanced = autoBalanceChores(state.chores, state.members);
+    setState((prev) => ({ ...prev, chores: balanced }));
+    showToast('⚖️ Đã tự động phân chia công việc công bằng cho mọi người!');
   };
 
   const handleNudge = async (chore: Chore, assignee?: Member) => {
@@ -676,7 +668,10 @@ export function App() {
         </div>
 
         {/* Fairness & Karma Board */}
-        <FairnessBoard members={state.members} />
+        <FairnessBoard 
+          members={state.members} 
+          onAutoBalance={handleAutoBalance}
+        />
 
         {/* Filter Tabs */}
         <div className="flex items-center space-x-1.5 bg-slate-200/70 p-1 rounded-2xl text-xs font-semibold overflow-x-auto no-scrollbar scroll-smooth">
@@ -752,7 +747,6 @@ export function App() {
                 currentUserId={currentUserId}
                 onToggleComplete={handleToggleComplete}
                 onNudge={handleNudge}
-                onRotateNext={handleRotateNext}
                 onOpenTransfer={(c) => setTransferTargetChore(c)}
               />
             ))

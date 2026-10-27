@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Plus, Clock, Scale } from 'lucide-react';
 import { Chore, FrequencyType, Member, RotationRule } from '../types';
 
@@ -31,9 +31,17 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
   const [points, setPoints] = useState(2);
   const [frequency, setFrequency] = useState<FrequencyType>('daily');
   const [dueTime, setDueTime] = useState('21:00');
-  const [assignedTo, setAssignedTo] = useState(members[0]?.id || '');
-  const [rotationRule, setRotationRule] = useState<RotationRule>('round-robin');
+  const [assignedTo, setAssignedTo] = useState('');
+  const [rotationRule, setRotationRule] = useState<RotationRule>('least-points');
   const [description, setDescription] = useState('');
+
+  // Tự động gợi ý giao việc cho người đang ít điểm nhất để đảm bảo công bằng từ đầu
+  useEffect(() => {
+    if (members.length > 0) {
+      const sortedByPoints = [...members].sort((a, b) => a.points - b.points);
+      setAssignedTo(sortedByPoints[0]?.id || members[0]?.id);
+    }
+  }, [members, isOpen]);
 
   if (!isOpen) return null;
 
@@ -195,7 +203,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Người làm đầu tiên
+                Người làm ban đầu
               </label>
               <select
                 value={assignedTo}
@@ -204,7 +212,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
               >
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.avatar} {m.name}
+                    {m.avatar} {m.name} ({m.points}đ)
                   </option>
                 ))}
               </select>
@@ -219,8 +227,8 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                 onChange={(e) => setRotationRule(e.target.value as RotationRule)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
+                <option value="least-points">Ưu tiên người ít điểm nhất (Công bằng)</option>
                 <option value="round-robin">Xoay vòng tuần tự (A-B-C)</option>
-                <option value="least-points">Ưu tiên người ít điểm nhất</option>
                 <option value="fixed">Cố định người này</option>
               </select>
             </div>
@@ -244,7 +252,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
               type="submit"
               className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 transition"
             >
-              Lưu & Bắt Đầu Phân Công
+              Lưu & Phân Công Việc
             </button>
           </div>
         </form>

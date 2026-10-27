@@ -10,6 +10,44 @@ export const getTodayDateString = (): string => {
   return `${year}-${month}-${day}`;
 };
 
+/**
+ * Thuật toán phân chia công việc công bằng (Fair Workload Distribution)
+ * - Sắp xếp việc từ nặng nhất đến nhẹ nhất (4đ -> 3đ -> 2đ -> 1đ)
+ * - Lần lượt gán mỗi việc cho thành viên đang gánh ít điểm nhất hôm nay
+ * - Đảm bảo tổng điểm việc nhà phân bổ đều nhất có thể cho tất cả mọi người
+ */
+export const autoBalanceChores = (chores: Chore[], members: Member[]): Chore[] => {
+  if (!members.length || !chores.length) return chores;
+
+  // Khởi tạo điểm việc gánh trong ngày của từng người
+  const memberDailyLoad: Record<string, number> = {};
+  members.forEach((m) => {
+    memberDailyLoad[m.id] = 0;
+  });
+
+  // Sắp xếp việc nặng ưu tiên phân chia trước
+  const sortedChores = [...chores].sort((a, b) => b.points - a.points);
+
+  return sortedChores.map((chore) => {
+    // Nếu việc này đang được người khác nhận nhượng việc hoặc có quy định riêng thì giữ nguyên
+    if (chore.originalAssignee) {
+      return chore;
+    }
+
+    // Tìm thành viên đang có khối lượng công việc hôm nay nhẹ nhất
+    const sortedMembers = [...members].sort(
+      (a, b) => memberDailyLoad[a.id] - memberDailyLoad[b.id]
+    );
+    const chosenMember = sortedMembers[0];
+    memberDailyLoad[chosenMember.id] += chore.points;
+
+    return {
+      ...chore,
+      assignedTo: chosenMember.id,
+    };
+  });
+};
+
 export const INITIAL_STATE: AppState = {
   roomName: 'Phòng Trọ 302 - Vui Vẻ',
   roomCode: 'PHONG-302',
@@ -49,51 +87,25 @@ export const INITIAL_STATE: AppState = {
   chores: [
     {
       id: 'c1',
-      title: 'Đổ rác & Thay túi rác',
-      category: 'trash',
-      points: 1,
-      frequency: 'daily',
-      dueTime: '20:30',
-      assignedTo: 'm3',
-      rotationRule: 'round-robin',
-      isCompletedToday: false,
-      icon: '🗑️',
-      description: 'Gom rác phòng khách, bếp và mang xuống thùng rác chung',
-    },
-    {
-      id: 'c2',
-      title: 'Rửa bát & Lau bồn rửa',
-      category: 'kitchen',
-      points: 2,
-      frequency: 'daily',
-      dueTime: '21:30',
-      assignedTo: 'm2',
-      rotationRule: 'round-robin',
-      isCompletedToday: false,
-      icon: '🍽️',
-      description: 'Rửa sạch bát đĩa sau bữa tối, úp khô và lau khô mặt đá bếp',
-    },
-    {
-      id: 'c3',
       title: 'Cọ sàn & Bồn cầu nhà vệ sinh',
       category: 'cleaning',
       points: 4,
       frequency: 'alternate',
       dueTime: '22:00',
-      assignedTo: 'm1',
+      assignedTo: 'm1', // 4đ
       rotationRule: 'least-points',
       isCompletedToday: false,
       icon: '🚽',
       description: 'Xịt nước tẩy, cọ sạch bồn cầu, lavabo và gạt khô sàn',
     },
     {
-      id: 'c4',
+      id: 'c2',
       title: 'Hút bụi & Lau sàn phòng khách',
       category: 'cleaning',
       points: 3,
       frequency: 'weekly',
       dueTime: '21:00',
-      assignedTo: 'm3',
+      assignedTo: 'm3', // 3đ
       rotationRule: 'least-points',
       isCompletedToday: true,
       completedAt: '15:20',
@@ -102,13 +114,39 @@ export const INITIAL_STATE: AppState = {
       description: 'Lau nhà sạch sẽ bằng nước lau sàn thơm',
     },
     {
+      id: 'c3',
+      title: 'Rửa bát & Lau bồn rửa',
+      category: 'kitchen',
+      points: 2,
+      frequency: 'daily',
+      dueTime: '21:30',
+      assignedTo: 'm2', // 2đ + c5 (2đ) = 4đ
+      rotationRule: 'round-robin',
+      isCompletedToday: false,
+      icon: '🍽️',
+      description: 'Rửa sạch bát đĩa sau bữa tối, úp khô và lau khô mặt đá bếp',
+    },
+    {
+      id: 'c4',
+      title: 'Đổ rác & Thay túi rác',
+      category: 'trash',
+      points: 1,
+      frequency: 'daily',
+      dueTime: '20:30',
+      assignedTo: 'm3', // 3đ + 1đ = 4đ
+      rotationRule: 'round-robin',
+      isCompletedToday: false,
+      icon: '🗑️',
+      description: 'Gom rác phòng khách, bếp và mang xuống thùng rác chung',
+    },
+    {
       id: 'c5',
       title: 'Mua đồ gia dụng chung (Dầu ăn, gia vị, giấy)',
       category: 'shopping',
       points: 2,
       frequency: 'weekly',
       dueTime: '19:00',
-      assignedTo: 'm2',
+      assignedTo: 'm2', // 4đ
       rotationRule: 'round-robin',
       isCompletedToday: false,
       icon: '🛒',
@@ -118,7 +156,7 @@ export const INITIAL_STATE: AppState = {
   logs: [
     {
       id: 'l1',
-      choreId: 'c4',
+      choreId: 'c2',
       choreTitle: 'Hút bụi & Lau sàn phòng khách',
       memberId: 'm3',
       memberName: 'Lê Minh',
@@ -126,21 +164,11 @@ export const INITIAL_STATE: AppState = {
       pointsEarned: 3,
       type: 'completed',
     },
-    {
-      id: 'l2',
-      choreId: 'c1',
-      choreTitle: 'Đổ rác & Thay túi rác',
-      memberId: 'm1',
-      memberName: 'Nguyễn Nam',
-      completedAt: 'Hôm qua 20:15',
-      pointsEarned: 1,
-      type: 'completed',
-    },
   ],
   transferRequests: [],
 };
 
-// Next assignee calculation
+// Next assignee calculation for rotation
 export const getNextAssignee = (
   currentAssigneeId: string,
   rule: RotationRule,
@@ -170,14 +198,14 @@ export const handleDayRollover = (state: AppState): AppState => {
 
   const updatedChores: Chore[] = state.chores.map((chore) => {
     // If this chore was transferred to someone else previously:
-    // "việc sẽ hoàn trả lại cho người nhượng nhưng người nhượng sẽ được (điểm hiện tại của việc + 1)"
+    // Trả lại cho người nhượng kèm điểm thưởng (điểm việc + 1)
     if (chore.originalAssignee) {
       const originalUser = chore.originalAssignee;
       return {
         ...chore,
         assignedTo: originalUser,
         originalAssignee: undefined,
-        nextBonusPoints: chore.points + 1, // Điểm thưởng khi làm lại ở lượt sau
+        nextBonusPoints: chore.points + 1,
         isCompletedToday: false,
         isLatePenalized: false,
         completedAt: undefined,
@@ -215,7 +243,6 @@ export const loadState = (): AppState => {
     }
     const parsed = JSON.parse(raw);
     
-    // Clean legacy penalties if existing from older versions
     if ('penalties' in parsed) {
       delete parsed.penalties;
       delete parsed.penaltyRate;
@@ -224,7 +251,6 @@ export const loadState = (): AppState => {
       parsed.transferRequests = [];
     }
 
-    // Ensure all members have lateViolations field
     if (parsed.members) {
       parsed.members = parsed.members.map((m: any) => ({
         ...m,

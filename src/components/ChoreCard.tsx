@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Circle, Clock, Flame, Send, RotateCw, ArrowRightLeft, Sparkles } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Flame, Send, ArrowRightLeft, Sparkles } from 'lucide-react';
 import { Chore, Member } from '../types';
 
 interface ChoreCardProps {
@@ -8,7 +8,6 @@ interface ChoreCardProps {
   currentUserId?: string | null;
   onToggleComplete: (choreId: string) => void;
   onNudge: (chore: Chore, assignee?: Member) => void;
-  onRotateNext: (choreId: string) => void;
   onOpenTransfer: (chore: Chore) => void;
 }
 
@@ -18,7 +17,6 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
   currentUserId,
   onToggleComplete,
   onNudge,
-  onRotateNext,
   onOpenTransfer,
 }) => {
   const assignee = members.find((m) => m.id === chore.assignedTo);
@@ -155,38 +153,30 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
             )}
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons (CHỈ CÒN Nhượng việc hoặc Nhắc Zalo - ĐÃ XÓA nút reload theo yêu cầu) */}
           <div className="flex items-center space-x-1 shrink-0">
-            {/* Nhượng việc button (if assigned to current user & not completed) */}
+            {/* Nhượng việc button (Chỉ người được giao mới có quyền nhượng và phải tốn điểm) */}
             {isMine && !chore.isCompletedToday && (
               <button
                 onClick={() => onOpenTransfer(chore)}
                 title="Nhượng lại việc cho người khác (-điểm việc)"
-                className="inline-flex items-center space-x-1 px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-[11px] font-semibold transition border border-amber-200/60"
+                className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-[11px] font-semibold transition border border-amber-200/60 shadow-2xs"
               >
                 <ArrowRightLeft className="w-2.5 h-2.5" />
-                <span>Nhượng</span>
+                <span>Nhượng việc</span>
               </button>
             )}
 
             {!chore.isCompletedToday && !isMine && (
               <button
                 onClick={() => onNudge(chore, assignee)}
-                title="Nhắc riêng người này qua Zalo"
+                title="Nhắc người này qua Zalo"
                 className="inline-flex items-center space-x-1 px-2 py-0.5 text-blue-600 hover:bg-blue-50 rounded-lg text-[11px] font-semibold transition"
               >
                 <Send className="w-2.5 h-2.5" />
                 <span className="whitespace-nowrap">Nhắc Zalo</span>
               </button>
             )}
-
-            <button
-              onClick={() => onRotateNext(chore.id)}
-              title="Đổi lượt cho người tiếp theo"
-              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition"
-            >
-              <RotateCw className="w-3 h-3" />
-            </button>
           </div>
         </div>
       </div>

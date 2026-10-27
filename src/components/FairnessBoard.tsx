@@ -1,12 +1,13 @@
 import React from 'react';
-import { Award, Scale, AlertTriangle, Sparkles, ArrowRightLeft } from 'lucide-react';
+import { Award, Scale, AlertTriangle, Sparkles, ArrowRightLeft, RefreshCw } from 'lucide-react';
 import { Member } from '../types';
 
 interface FairnessBoardProps {
   members: Member[];
+  onAutoBalance?: () => void;
 }
 
-export const FairnessBoard: React.FC<FairnessBoardProps> = ({ members }) => {
+export const FairnessBoard: React.FC<FairnessBoardProps> = ({ members, onAutoBalance }) => {
   const sortedMembers = [...members].sort((a, b) => b.points - a.points);
   const maxPoints = Math.max(...members.map((m) => m.points), 1);
   const totalPoints = members.reduce((sum, m) => sum + m.points, 0);
@@ -38,15 +39,27 @@ export const FairnessBoard: React.FC<FairnessBoardProps> = ({ members }) => {
         </div>
 
         {/* Fairness Ratio Pill */}
-        <span
-          className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 whitespace-nowrap ${
-            fairnessRatio >= 80
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
-              : 'bg-amber-50 text-amber-700 border border-amber-200/80'
-          }`}
-        >
-          <span>{fairnessRatio}% công bằng</span>
-        </span>
+        <div className="flex items-center space-x-1.5 shrink-0">
+          {onAutoBalance && (
+            <button
+              onClick={onAutoBalance}
+              title="Phân chia lại việc công bằng cho các thành viên"
+              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          <span
+            className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 whitespace-nowrap ${
+              fairnessRatio >= 80
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                : 'bg-amber-50 text-amber-700 border border-amber-200/80'
+            }`}
+          >
+            <span>{fairnessRatio}% công bằng</span>
+          </span>
+        </div>
       </div>
 
       {/* Members Points Bars */}
@@ -107,17 +120,17 @@ export const FairnessBoard: React.FC<FairnessBoardProps> = ({ members }) => {
         })}
       </div>
 
-      {/* Rules Banner (Quy tắc trừ điểm & nhượng việc) */}
+      {/* Rules Banner */}
       <div className="pt-2 border-t border-slate-100 flex items-center justify-between bg-slate-50/80 p-2.5 rounded-xl text-[10px] text-slate-600 leading-tight">
         <div className="flex items-center space-x-1.5">
           <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
           <span>
-            Trễ hạn: <strong>-điểm việc</strong> • Tái phạm: <strong>-(điểm + 2)</strong>
+            Trễ: <strong>-điểm việc</strong> • Tái phạm: <strong>-(điểm + 2)</strong>
           </span>
         </div>
         <div className="flex items-center space-x-1 font-semibold text-amber-700 shrink-0">
           <ArrowRightLeft className="w-3 h-3" />
-          <span>Có thể nhượng việc</span>
+          <span>Nhượng việc để nhờ</span>
         </div>
       </div>
     </div>
