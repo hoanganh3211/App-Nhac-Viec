@@ -569,7 +569,7 @@ export function App() {
 
     // Chuẩn bị tin nhắn nhắc Zalo
     const tag = `@${assignee.zaloName || assignee.name}`;
-    const text = `📢 [YÊU CẦU LÀM LẠI] Alo ${tag} ơi!\nBạn ${currentMember.name} vừa kiểm tra việc "${targetChore.title}" và thấy chưa đạt (${reason}).\nBạn làm lại sạch sẽ và tick lại để nhận lại điểm nhé! 🧹\n🔗 ${window.location.origin}?room=${encodeURIComponent(state.roomCode)}`;
+    const text = `📢 [YÊU CẦU LÀM LẠI] Alo ${tag} ơi!\nBạn ${currentMember.name} vừa kiểm tra việc "${targetChore.title}" và thấy chưa đạt (${reason}).\nBạn làm lại sạch sẽ và tick lại để nhận lại điểm nhé! 🧹\n🔗 Link vào app: ${window.location.origin}?room=${encodeURIComponent(state.roomCode)}\n🔑 Mã phòng: ${state.roomCode}`;
     await shareToZalo(text);
   };
 
@@ -794,7 +794,7 @@ export function App() {
   const handleNudge = async (chore: Chore, assignee?: Member) => {
     playNudgeSound();
     const tag = assignee ? `@${assignee.zaloName || assignee.name}` : 'bạn';
-    const text = `📢 [NHẮC VIỆC RIÊNG] Alo ${tag} ơi!\nĐến giờ làm "${chore.title}" rồi nè (${chore.dueTime}). Quá giờ sẽ bị trừ -${chore.points}đ đó nha! 🧹\n🔗 ${window.location.origin}?room=${encodeURIComponent(state.roomCode)}`;
+    const text = `📢 [NHẮC VIỆC RIÊNG] Alo ${tag} ơi!\nĐến giờ làm "${chore.title}" rồi nè (${chore.dueTime}). Quá giờ sẽ bị trừ -${chore.points}đ đó nha! 🧹\n🔗 Link vào app: ${window.location.origin}?room=${encodeURIComponent(state.roomCode)}\n🔑 Mã phòng: ${state.roomCode}`;
     
     await shareToZalo(text);
     showToast(`Đã chuẩn bị lời nhắc cho ${assignee?.name}! Hãy dán vào Zalo nhé.`);
@@ -1307,20 +1307,22 @@ export function App() {
         </div>
       </main>
 
-      {/* Floating Bottom Quick Zalo Trigger */}
+      {/* Compact Floating Bottom-Right Quick Zalo Reminder Trigger */}
       <div 
-        className="fixed inset-x-0 max-w-md mx-auto px-4 z-20 pointer-events-none"
-        style={{ bottom: 'max(env(safe-area-inset-bottom), 1rem)' }}
+        className="fixed z-20 pointer-events-auto"
+        style={{
+          bottom: 'max(env(safe-area-inset-bottom), 1.25rem)',
+          right: 'max(calc((100vw - 28rem) / 2 + 1rem), 1rem)',
+        }}
       >
-        <div className="pointer-events-auto">
-          <button
-            onClick={() => setIsZaloOpen(true)}
-            className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-blue-500/25 flex items-center justify-center space-x-2 transition transform active:scale-98"
-          >
-            <Share2 className="w-4 h-4" />
-            <span>Gửi Bảng Nhắc Việc Vào Nhóm Zalo</span>
-          </button>
-        </div>
+        <button
+          onClick={() => setIsZaloOpen(true)}
+          title="Gửi bảng nhắc việc vào nhóm Zalo"
+          className="py-2.5 px-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-full shadow-lg shadow-blue-500/30 flex items-center space-x-1.5 transition-all transform hover:scale-105 active:scale-95 border border-white/25 cursor-pointer"
+        >
+          <Share2 className="w-3.5 h-3.5 shrink-0" />
+          <span className="whitespace-nowrap">Nhắc Zalo</span>
+        </button>
       </div>
 
       {/* Toast Notification */}

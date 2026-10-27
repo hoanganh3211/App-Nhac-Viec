@@ -15,15 +15,23 @@ export const ProposalVoteCard: React.FC<ProposalVoteCardProps> = ({
   currentUserId,
   onVote,
 }) => {
-  const pendingProposals = proposals.filter((p) => p.status === 'pending');
-  if (pendingProposals.length === 0) return null;
+  // Chỉ hiển thị các biểu quyết đang chờ (pending) mà người dùng này CHƯA BỎ PHIẾU.
+  // Những biểu quyết đã vote rồi sẽ tự động ẩn đi tránh làm phiền,
+  // người dùng có thể theo dõi kết quả cụ thể trong Trung tâm Thông báo (icon Chuông).
+  const pendingProposalsToVote = proposals.filter((p) => {
+    if (p.status !== 'pending') return false;
+    if (currentUserId && p.votes[currentUserId]) return false;
+    return true;
+  });
+
+  if (pendingProposalsToVote.length === 0) return null;
 
   const totalMembers = members.length;
   const requiredVotes = Math.floor(totalMembers / 2) + 1;
 
   return (
     <div className="space-y-2.5">
-      {pendingProposals.map((proposal) => {
+      {pendingProposalsToVote.map((proposal) => {
         const agreeVotes = Object.values(proposal.votes).filter((v) => v === 'agree').length;
         const rejectVotes = Object.values(proposal.votes).filter((v) => v === 'reject').length;
         const totalVotesCast = Object.keys(proposal.votes).length;

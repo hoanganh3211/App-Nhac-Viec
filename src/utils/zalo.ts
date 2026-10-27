@@ -46,6 +46,7 @@ export const generateZaloDailyReminder = (
 
   message += `━━━━━━━━━━━━━━━━━━━━\n`;
   message += `👉 Vào app tick việc: ${inviteUrl}\n`;
+  message += `🔑 Mã phòng độc lập: ${roomCode} (Nhập mã nếu vào app thủ công)\n`;
   message += `⚠️ Lưu ý: Quá hạn chưa xong sẽ bị trừ điểm, tái phạm trừ (điểm việc + 2)!`;
 
   return message;

@@ -66,7 +66,7 @@ export const ZaloReminderModal: React.FC<ZaloReminderModalProps> = ({
           <div className="flex items-start space-x-2 p-3 bg-blue-50/80 rounded-2xl text-blue-800 text-xs leading-relaxed">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-blue-600" />
             <div>
-              Tin nhắn có sẵn danh sách người làm việc hôm nay và <strong>link trực tiếp vào đúng phòng này</strong> ({roomCode}).
+              Tin nhắn có sẵn danh sách việc hôm nay, <strong>link trực tiếp vào phòng</strong> và <strong>mã phòng độc lập</strong> (<code>{roomCode}</code>).
             </div>
           </div>
 
