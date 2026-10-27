@@ -8,7 +8,8 @@ import {
   ChevronRight,
   Sparkles,
   Scale,
-  Home
+  Home,
+  LogOut
 } from 'lucide-react';
 import { Member } from '../types';
 
@@ -24,6 +25,7 @@ interface MenuDrawerProps {
   onOpenRules: () => void;
   onOpenPWA: () => void;
   onOpenRoomModal: () => void;
+  onLeaveRoom: () => void;
 }
 
 export const MenuDrawer: React.FC<MenuDrawerProps> = ({
@@ -38,6 +40,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   onOpenRules,
   onOpenPWA,
   onOpenRoomModal,
+  onLeaveRoom,
 }) => {
   if (!isOpen) return null;
 
@@ -192,6 +195,23 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
+          </button>
+
+          {/* Leave / Switch Room */}
+          <button
+            onClick={() => handleAction(onLeaveRoom)}
+            className="w-full p-2.5 rounded-2xl hover:bg-rose-50 text-rose-700 flex items-center justify-between text-left transition group"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                <LogOut className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-rose-800">Đổi sang phòng khác</div>
+                <div className="text-[11px] text-rose-500/80">Quay về trang chào mừng / nhập mã</div>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-rose-300 group-hover:text-rose-500 transition" />
           </button>
         </div>
 
