@@ -7,7 +7,8 @@ import {
   RotateCcw, 
   ArrowRightLeft, 
   Sparkles, 
-  CheckCheck
+  CheckCheck,
+  Settings
 } from 'lucide-react';
 import { AppNotification, RoomProposal, Member } from '../types';
 
@@ -20,6 +21,7 @@ interface NotificationModalProps {
   currentUserId: string | null;
   onMarkAllRead: () => void;
   onVoteProposal: (proposalId: string, vote: 'agree' | 'reject') => void;
+  onOpenNotificationSettings?: () => void;
 }
 
 export const NotificationModal: React.FC<NotificationModalProps> = ({
@@ -31,6 +33,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   currentUserId,
   onMarkAllRead,
   onVoteProposal,
+  onOpenNotificationSettings,
 }) => {
   const [activeTab, setActiveTab] = useState<'notifications' | 'proposals'>('notifications');
 
@@ -74,12 +77,26 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
               <p className="text-[10px] text-slate-400">Tin tức & Biểu quyết phòng</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-1">
+            {onOpenNotificationSettings && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenNotificationSettings();
+                }}
+                title="Cài đặt thông báo đẩy"
+                className="p-1.5 rounded-full text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tab switch */}

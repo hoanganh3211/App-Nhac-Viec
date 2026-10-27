@@ -13,7 +13,8 @@ import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
   getNotificationPermission, 
   requestNotificationPermission, 
-  checkAndNotifyMyChores 
+  checkAndNotifyMyChores,
+  checkAndPushRemoteNotifications
 } from './utils/notifications';
 import { 
   getSupabaseClient, 
@@ -40,6 +41,7 @@ import { ChoreDetailModal } from './components/ChoreDetailModal';
 import { RequestRedoModal } from './components/RequestRedoModal';
 import { ProposalVoteCard } from './components/ProposalVoteCard';
 import { NotificationModal } from './components/NotificationModal';
+import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { shareToZalo } from './utils/zalo';
 
 const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
@@ -96,6 +98,7 @@ export function App() {
   const [selectedChoreForDetail, setSelectedChoreForDetail] = useState<Chore | null>(null);
   const [selectedChoreForRedo, setSelectedChoreForRedo] = useState<Chore | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
 
   const unreadNotificationsCount = useMemo(() => {
     const unreadNotifs = (state.notifications || []).filter(
@@ -191,6 +194,14 @@ export function App() {
             }
             isRemoteUpdateRef.current = true;
             lastPushedJsonRef.current = newJson;
+
+            // Đẩy thông báo tức thì ra màn hình khóa khi bạn cùng phòng hoàn thành việc/nhượng việc/biểu quyết
+            checkAndPushRemoteNotifications(
+              stateRef.current.notifications || [],
+              newState.notifications || [],
+              currentUserIdRef.current
+            );
+
             setState(newState);
           }
         }
@@ -229,8 +240,14 @@ export function App() {
       return;
     }
 
-    // 2. Thông báo việc sắp đến hạn của người dùng hiện tại
-    checkAndNotifyMyChores(currentState.chores, currentUserIdRef.current, currentMemberRef.current);
+    // 2. Thông báo đẩy: Nhắc việc hôm nay, báo việc ngày mai & cảnh báo nhiều mốc sát hạn chót
+    checkAndNotifyMyChores(
+      currentState.chores,
+      currentUserIdRef.current,
+      currentMemberRef.current,
+      currentState.members,
+      currentState.rebalancePendingTomorrow
+    );
 
     // 3. Kiểm tra quá hạn và trừ điểm
     const now = new Date();
@@ -323,8 +340,14 @@ export function App() {
     const granted = await requestNotificationPermission();
     setNotificationPermission(granted ? 'granted' : 'denied');
     if (granted) {
-      showToast('🔔 Đã bật thông báo việc của bạn thành công!');
-      checkAndNotifyMyChores(state.chores, currentUserId, currentMember);
+      showToast('🔔 Đã bật thông báo đẩy thành công!');
+      checkAndNotifyMyChores(
+        state.chores,
+        currentUserId,
+        currentMember,
+        state.members,
+        state.rebalancePendingTomorrow
+      );
     } else {
       showToast('⚠️ Bạn chưa cấp quyền thông báo trên trình duyệt.');
     }
@@ -1167,6 +1190,7 @@ export function App() {
           onToggleComplete={handleToggleComplete}
           onRequestNotification={handleRequestNotification}
           notificationPermission={notificationPermission}
+          onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
           onOpenUserSelect={() => setIsUserSelectOpen(true)}
           onOpenTransfer={(chore) => setTransferTargetChore(chore)}
           onAcceptTransfer={handleAcceptTransfer}
@@ -1312,6 +1336,7 @@ export function App() {
         currentMember={currentMember}
         onOpenUserSelect={() => setIsUserSelectOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
+        onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenRules={() => setIsRulesOpen(true)}
         onOpenPWA={() => setIsPWAOpen(true)}
@@ -1437,6 +1462,16 @@ export function App() {
         currentUserId={currentUserId}
         onMarkAllRead={handleMarkAllNotificationsAsRead}
         onVoteProposal={handleVoteProposal}
+        onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
+      />
+
+      {/* Push Notification Custom Settings Modal */}
+      <NotificationSettingsModal
+        isOpen={isNotificationSettingsOpen}
+        onClose={() => setIsNotificationSettingsOpen(false)}
+        onSettingsChanged={() => {
+          showToast('🔔 Đã lưu cài đặt thông báo thành công!');
+        }}
       />
     </div>
   );

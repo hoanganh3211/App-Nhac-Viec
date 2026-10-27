@@ -93,6 +93,16 @@ export interface AppNotification {
   choreId?: string;
 }
 
+export interface NotificationSettings {
+  enabled: boolean;
+  todayReminderEnabled: boolean;
+  todayReminderTime: string; // "08:00"
+  tomorrowPreviewEnabled: boolean;
+  tomorrowPreviewTime: string; // "21:00"
+  urgentDeadlineEnabled: boolean;
+  roomActivitiesEnabled: boolean;
+}
+
 export interface AppState {
   roomName: string;
   roomCode: string;

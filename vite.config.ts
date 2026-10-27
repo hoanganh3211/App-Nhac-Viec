@@ -7,7 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg', 'custom-sw.js'],
+      workbox: {
+        importScripts: ['custom-sw.js'],
+      },
       manifest: {
         name: 'Chia Việc Nhà - Nhắc Việc Chung',
         short_name: 'ViệcNhà',

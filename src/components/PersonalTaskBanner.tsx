@@ -9,6 +9,7 @@ interface PersonalTaskBannerProps {
   onToggleComplete: (choreId: string) => void;
   onRequestNotification: () => void;
   notificationPermission: NotificationPermission;
+  onOpenNotificationSettings?: () => void;
   onOpenUserSelect: () => void;
   onOpenTransfer: (chore: Chore) => void;
   onAcceptTransfer: (requestId: string) => void;
@@ -23,6 +24,7 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
   onToggleComplete,
   onRequestNotification,
   notificationPermission,
+  onOpenNotificationSettings,
   onOpenUserSelect,
   onOpenTransfer,
   onAcceptTransfer,
@@ -133,18 +135,28 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
           {/* Notification bell trigger */}
           {notificationPermission !== 'granted' ? (
             <button
-              onClick={onRequestNotification}
+              onClick={() => {
+                if (onOpenNotificationSettings) {
+                  onOpenNotificationSettings();
+                } else {
+                  onRequestNotification();
+                }
+              }}
               title="Bật chuông thông báo cá nhân khi đến giờ việc của bạn"
-              className="flex items-center space-x-1 px-2 py-1 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-xl text-[11px] font-bold shadow-2xs transition shrink-0 whitespace-nowrap animate-pulse"
+              className="flex items-center space-x-1 px-2 py-1 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-xl text-[11px] font-bold shadow-2xs transition shrink-0 whitespace-nowrap animate-pulse cursor-pointer"
             >
               <Bell className="w-3 h-3" />
-              <span>Bật chuông</span>
+              <span>Bật chuông ⚙️</span>
             </button>
           ) : (
-            <span className="inline-flex items-center space-x-1 text-[10px] text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0 whitespace-nowrap">
+            <button
+              onClick={onOpenNotificationSettings}
+              title="Cài đặt giờ nhắc việc hôm nay, ngày mai và sát hạn"
+              className="inline-flex items-center space-x-1 text-[10px] text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/80 px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0 whitespace-nowrap transition cursor-pointer"
+            >
               <Bell className="w-2.5 h-2.5 text-emerald-400" />
-              <span>Chuông Bật</span>
-            </span>
+              <span>Cài đặt giờ ⚙️</span>
+            </button>
           )}
         </div>
 
