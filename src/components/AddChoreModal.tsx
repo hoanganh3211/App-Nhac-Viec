@@ -80,6 +80,14 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
       return;
     }
 
+    // Nếu đang chọn cả 7 ngày (mặc định) mà người dùng bấm vào 1 thứ cụ thể (VD: CN)
+    // => Người dùng muốn CHỈ CHỌN RIÊNG THỨ ĐÓ!
+    if (daysOfWeek.length === 7) {
+      setDaysOfWeek([day]);
+      setFrequency('weekly');
+      return;
+    }
+
     if (daysOfWeek.includes(day)) {
       if (daysOfWeek.length > 1) {
         const next = daysOfWeek.filter((d) => d !== day);
@@ -97,7 +105,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
     }
   };
 
-  const handleQuickSelectDays = (type: 'all' | 'weekdays' | 'weekend' | 'today') => {
+  const handleQuickSelectDays = (type: 'all' | 'weekdays' | 'weekend' | 'today' | 'sunday') => {
     if (type === 'all') {
       setDaysOfWeek([1, 2, 3, 4, 5, 6, 0]);
       if (frequency !== 'once') setFrequency('daily');
@@ -109,6 +117,10 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
       if (frequency !== 'once') setFrequency('weekly');
     } else if (type === 'today') {
       setDaysOfWeek([todayDayIndex]);
+      if (frequency !== 'once') setFrequency('weekly');
+    } else if (type === 'sunday') {
+      setDaysOfWeek([0]); // 0 = Chủ Nhật
+      if (frequency !== 'once') setFrequency('weekly');
     }
   };
 
@@ -257,7 +269,14 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                 onClick={() => handleQuickSelectDays('today')}
                 className="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 transition cursor-pointer"
               >
-                Hôm nay
+                Chỉ hôm nay ({DAYS_OF_WEEK.find(d => d.day === todayDayIndex)?.label})
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickSelectDays('sunday')}
+                className="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 transition cursor-pointer"
+              >
+                Chỉ Chủ Nhật
               </button>
               {frequency !== 'once' && (
                 <>
@@ -311,7 +330,12 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => setFrequency('weekly')}
+                onClick={() => {
+                  setFrequency('weekly');
+                  if (daysOfWeek.length === 7) {
+                    setDaysOfWeek([todayDayIndex]);
+                  }
+                }}
                 className={`p-2.5 rounded-2xl border text-left transition cursor-pointer ${
                   frequency === 'weekly'
                     ? 'bg-indigo-50 border-indigo-500 text-indigo-900 shadow-2xs'

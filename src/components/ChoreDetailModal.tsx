@@ -16,7 +16,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { Chore, Member } from '../types';
-import { formatChoreDays } from '../utils/storage';
+import { formatChoreDays, isChoreScheduledToday } from '../utils/storage';
 
 interface ChoreDetailModalProps {
   isOpen: boolean;
@@ -47,8 +47,11 @@ export const ChoreDetailModal: React.FC<ChoreDetailModalProps> = ({
 
   const assignee = members.find((m) => m.id === chore.assignedTo);
   const isMine = Boolean(currentUserId && chore.assignedTo === currentUserId);
+  const isScheduledToday = isChoreScheduledToday(chore);
 
   const isOverdue = (): boolean => {
+    // Nếu hôm nay không phải ngày làm thì không thể bị trễ hạn hôm nay
+    if (!isScheduledToday) return false;
     if (chore.isCompletedToday) return false;
     const now = new Date();
     const [hours, minutes] = chore.dueTime.split(':').map(Number);
@@ -172,6 +175,16 @@ export const ChoreDetailModal: React.FC<ChoreDetailModalProps> = ({
                 <div className="font-bold text-xs">Đã quá giờ quy định ({chore.dueTime})!</div>
                 <div className="text-[11px] text-rose-700">
                   Cần hoàn thành ngay để tránh bị trừ điểm trễ hạn.
+                </div>
+              </div>
+            </div>
+          ) : !isScheduledToday ? (
+            <div className="p-3 bg-slate-100 border border-slate-200 rounded-2xl flex items-center space-x-2 text-slate-800">
+              <Calendar className="w-5 h-5 text-indigo-600 shrink-0" />
+              <div>
+                <div className="font-bold text-xs">Lịch làm: {formatChoreDays(chore.daysOfWeek, chore.frequency)} ({chore.dueTime})</div>
+                <div className="text-[11px] text-slate-500">
+                  Hôm nay không phải ngày làm việc này. Bạn không cần làm và không bị tính trễ hạn!
                 </div>
               </div>
             </div>
@@ -310,16 +323,22 @@ export const ChoreDetailModal: React.FC<ChoreDetailModalProps> = ({
                     <span>Nhượng việc</span>
                   </button>
 
-                  <button
-                    onClick={() => {
-                      onToggleComplete(chore.id);
-                      onClose();
-                    }}
-                    className="flex-1 py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-1 transition shadow-md shadow-indigo-100"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Xong (+{rewardPoints}đ)</span>
-                  </button>
+                  {isScheduledToday ? (
+                    <button
+                      onClick={() => {
+                        onToggleComplete(chore.id);
+                        onClose();
+                      }}
+                      className="flex-1 py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-1 transition shadow-md shadow-indigo-100"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Xong (+{rewardPoints}đ)</span>
+                    </button>
+                  ) : (
+                    <div className="flex-1 py-2.5 px-2 bg-slate-100 text-slate-500 font-semibold rounded-xl text-xs text-center border border-slate-200">
+                      Chờ tới {formatChoreDays(chore.daysOfWeek, chore.frequency)}
+                    </div>
+                  )}
                 </>
               ) : (
                 <button

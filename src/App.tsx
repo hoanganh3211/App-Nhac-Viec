@@ -97,7 +97,7 @@ export function App() {
   const isRemoteUpdateRef = useRef(false);
   const lastPushedJsonRef = useRef<string>('');
 
-  const [activeTab, setActiveTab] = useState<'my_chores' | 'all' | 'pending' | 'completed'>('my_chores');
+  const [activeTab, setActiveTab] = useState<'my_chores' | 'today_all' | 'all' | 'pending' | 'completed'>('my_chores');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     getNotificationPermission()
@@ -1387,18 +1387,35 @@ export function App() {
     showToast('Đã cập nhật tên phòng!');
   };
 
+  // Các công việc thực tế được lên lịch làm vào HÔM NAY
+  const todayScheduledChores = useMemo(() => {
+    return state.chores.filter((c) => isChoreScheduledToday(c));
+  }, [state.chores]);
+
+  const todayCompletedCount = todayScheduledChores.filter((c) => c.isCompletedToday).length;
+  const todayUncompletedCount = todayScheduledChores.filter((c) => !c.isCompletedToday).length;
+
   // Filter chores
   const filteredChores = useMemo(() => {
     return state.chores.filter((chore) => {
-      if (activeTab === 'my_chores') return chore.assignedTo === currentUserId;
-      if (activeTab === 'pending') return !chore.isCompletedToday;
-      if (activeTab === 'completed') return chore.isCompletedToday;
-      return true; // 'all'
+      const isToday = isChoreScheduledToday(chore);
+      if (activeTab === 'my_chores') {
+        return chore.assignedTo === currentUserId && isToday;
+      }
+      if (activeTab === 'pending') {
+        return isToday && !chore.isCompletedToday;
+      }
+      if (activeTab === 'completed') {
+        return isToday && chore.isCompletedToday;
+      }
+      if (activeTab === 'today_all') {
+        return isToday;
+      }
+      // 'all': Hiển thị toàn bộ công việc của phòng (cả hôm nay và các ngày khác)
+      return true;
     });
   }, [state.chores, activeTab, currentUserId]);
 
-  const uncompletedCount = state.chores.filter((c) => !c.isCompletedToday).length;
-  const completedCount = state.chores.filter((c) => c.isCompletedToday).length;
   const myPendingCount = myChores.filter((c) => !c.isCompletedToday).length;
 
   const todayFormatted = new Date().toLocaleDateString('vi-VN', {
@@ -1441,7 +1458,7 @@ export function App() {
       {/* Sleek Top Header (Bấm tên phòng để mở quản lý mã phòng) */}
       <Navbar
         roomName={state.roomName}
-        uncompletedCount={uncompletedCount}
+        uncompletedCount={todayUncompletedCount}
         unreadNotificationsCount={unreadNotificationsCount}
         onOpenAddChore={() => setIsAddChoreOpen(true)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
@@ -1490,9 +1507,9 @@ export function App() {
           </div>
 
           <div className="flex items-center space-x-1 font-semibold text-slate-700 shrink-0 whitespace-nowrap ml-2">
-            <span>Tiến độ:</span>
+            <span>Tiến độ hôm nay:</span>
             <span className="text-indigo-600 font-bold">
-              {completedCount}/{state.chores.length}
+              {todayCompletedCount}/{todayScheduledChores.length}
             </span>
           </div>
         </button>
@@ -1520,14 +1537,14 @@ export function App() {
           </button>
 
           <button
-            onClick={() => setActiveTab('all')}
+            onClick={() => setActiveTab('today_all')}
             className={`px-3 py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${
-              activeTab === 'all'
+              activeTab === 'today_all'
                 ? 'bg-white text-slate-800 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Cả phòng ({state.chores.length})
+            Hôm nay ({todayScheduledChores.length})
           </button>
 
           <button
@@ -1538,7 +1555,7 @@ export function App() {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Chưa xong ({uncompletedCount})
+            Chưa xong ({todayUncompletedCount})
           </button>
 
           <button
@@ -1549,7 +1566,19 @@ export function App() {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Đã xong ({completedCount})
+            Đã xong ({todayCompletedCount})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`px-3 py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${
+              activeTab === 'all'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+            title="Xem toàn bộ các công việc trong phòng (cả hôm nay và các thứ khác)"
+          >
+            Toàn bộ ({state.chores.length})
           </button>
         </div>
 

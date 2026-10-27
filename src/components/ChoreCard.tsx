@@ -1,7 +1,7 @@
 import React from 'react';
 import { CheckCircle2, Circle, Clock, Flame, Send, ArrowRightLeft, Sparkles, Lock, RotateCcw, Undo2, Calendar } from 'lucide-react';
 import { Chore, Member } from '../types';
-import { formatChoreDays } from '../utils/storage';
+import { formatChoreDays, isChoreScheduledToday } from '../utils/storage';
 
 interface ChoreCardProps {
   chore: Chore;
@@ -26,8 +26,11 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
 }) => {
   const assignee = members.find((m) => m.id === chore.assignedTo);
   const isMine = Boolean(currentUserId && chore.assignedTo === currentUserId);
+  const isScheduledToday = isChoreScheduledToday(chore);
 
   const isOverdue = (): boolean => {
+    // Nếu hôm nay không phải ngày làm việc này thì TUYỆT ĐỐI KHÔNG BÁO TRỄ
+    if (!isScheduledToday) return false;
     if (chore.isCompletedToday) return false;
     const now = new Date();
     const [hours, minutes] = chore.dueTime.split(':').map(Number);
@@ -47,6 +50,8 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
           ? 'bg-emerald-50/70 border-emerald-200/80 text-slate-700 shadow-2xs hover:border-emerald-300'
           : overdue
           ? 'bg-rose-50/80 border-rose-200 shadow-xs hover:border-rose-300'
+          : !isScheduledToday
+          ? 'bg-slate-50/70 border-slate-200/70 opacity-90'
           : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-indigo-200'
       }`}
     >
@@ -60,6 +65,8 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
                 ? 'bg-emerald-100 text-emerald-700'
                 : overdue
                 ? 'bg-rose-100 text-rose-700'
+                : !isScheduledToday
+                ? 'bg-slate-200/80 text-slate-600'
                 : 'bg-indigo-50 text-indigo-700'
             }`}
           >
@@ -85,7 +92,7 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
             )}
 
             {/* Redo request alert badge */}
-            {chore.redoRequest && !chore.isCompletedToday && (
+            {chore.redoRequest && !chore.isCompletedToday && isScheduledToday && (
               <div className="mt-1 flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-950 text-[10px] font-semibold border border-amber-200">
                 <RotateCcw className="w-2.5 h-2.5 text-amber-600 shrink-0" />
                 <span className="truncate">Cần làm lại: "{chore.redoRequest.reason}" ({chore.redoRequest.requestedByName})</span>
@@ -100,6 +107,8 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
                     ? 'bg-emerald-100 text-emerald-800'
                     : overdue
                     ? 'bg-rose-100 text-rose-800 font-bold animate-pulse'
+                    : !isScheduledToday
+                    ? 'bg-indigo-50 text-indigo-800 border border-indigo-100'
                     : 'bg-slate-100 text-slate-600'
                 }`}
               >
@@ -109,6 +118,8 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
                     ? `Xong ${chore.completedAt || ''}`
                     : overdue
                     ? `Trễ hạn (${chore.dueTime})`
+                    : !isScheduledToday
+                    ? `Lịch: ${formatChoreDays(chore.daysOfWeek, chore.frequency)} (${chore.dueTime})`
                     : chore.dueTime}
                 </span>
               </span>
@@ -122,14 +133,14 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
                 <span className="inline-flex items-center space-x-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-900 border border-amber-300 shrink-0 whitespace-nowrap">
                   <span>⚡ 1 lần</span>
                 </span>
-              ) : chore.daysOfWeek && chore.daysOfWeek.length > 0 && chore.daysOfWeek.length < 7 && (
+              ) : isScheduledToday && chore.daysOfWeek && chore.daysOfWeek.length > 0 && chore.daysOfWeek.length < 7 && (
                 <span className="inline-flex items-center space-x-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600 border border-slate-200 shrink-0 whitespace-nowrap">
                   <Calendar className="w-2.5 h-2.5 text-slate-400" />
                   <span>{formatChoreDays(chore.daysOfWeek, chore.frequency)}</span>
                 </span>
               )}
 
-              {chore.nextBonusPoints && !chore.isCompletedToday && (
+              {chore.nextBonusPoints && !chore.isCompletedToday && isScheduledToday && (
                 <span className="inline-flex items-center space-x-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60 shrink-0 whitespace-nowrap">
                   <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
                   <span>Thưởng hoàn trả (+1đ)</span>
@@ -141,9 +152,6 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
           {/* Right: Checkbox completion area */}
           <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
             {chore.isCompletedToday ? (
-              // Nếu đã xong:
-              // - Nếu là chính chủ: có thể bấm bỏ tick để làm lại
-              // - Nếu là người khác: chỉ hiển thị icon tĩnh, KHÔNG bấm được
               isMine ? (
                 <button
                   onClick={() => onToggleComplete(chore.id)}
@@ -158,16 +166,26 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
                 </div>
               )
             ) : isMine ? (
-              // CHỈ HIỆN NÚT TICK KHI LÀ VIỆC CỦA CHÍNH MÌNH
-              <button
-                onClick={() => onToggleComplete(chore.id)}
-                className="p-1.5 rounded-2xl text-slate-300 hover:text-indigo-600 transition transform active:scale-95"
-                title="Bấm để xác nhận hoàn thành việc của bạn"
-              >
-                <Circle className="w-7 h-7 text-slate-300 stroke-[1.8]" />
-              </button>
+              isScheduledToday ? (
+                // CHỈ HIỆN NÚT TICK KHI LÀ VIỆC CỦA CHÍNH MÌNH VÀ ĐÚNG NGÀY ĐƯỢC LÊN LỊCH
+                <button
+                  onClick={() => onToggleComplete(chore.id)}
+                  className="p-1.5 rounded-2xl text-slate-300 hover:text-indigo-600 transition transform active:scale-95"
+                  title="Bấm để xác nhận hoàn thành việc của bạn"
+                >
+                  <Circle className="w-7 h-7 text-slate-300 stroke-[1.8]" />
+                </button>
+              ) : (
+                <div 
+                  className="flex items-center space-x-1 px-2 py-1 rounded-xl bg-slate-100 text-[10px] text-slate-400 font-medium"
+                  title={`Việc này được lên lịch vào ${formatChoreDays(chore.daysOfWeek, chore.frequency)}`}
+                >
+                  <Calendar className="w-3 h-3 text-slate-400" />
+                  <span className="hidden sm:inline">Chờ tới ngày</span>
+                </div>
+              )
             ) : (
-              // NẾU LÀ VIỆC CỦA NGƯỜI KHÁC: ẨN NÚT TICK HOÀN TOÀN
+              // NẾU LÀ VIỆC CỦA NGƯỜI KHÁC
               <div 
                 className="flex items-center space-x-1 px-2 py-1 rounded-xl bg-slate-100 text-[10px] text-slate-400 font-medium"
                 title={`Chỉ ${assignee?.name || 'người được giao'} mới có quyền tick`}

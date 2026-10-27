@@ -75,6 +75,14 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
       return;
     }
 
+    // Nếu đang chọn cả 7 ngày mà người dùng bấm vào 1 thứ cụ thể (VD: CN)
+    // => Người dùng muốn CHỈ CHỌN RIÊNG THỨ ĐÓ!
+    if (daysOfWeek.length === 7) {
+      setDaysOfWeek([day]);
+      setFrequency('weekly');
+      return;
+    }
+
     if (daysOfWeek.includes(day)) {
       if (daysOfWeek.length > 1) {
         const next = daysOfWeek.filter((d) => d !== day);
@@ -92,7 +100,7 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
     }
   };
 
-  const handleQuickSelectDays = (type: 'all' | 'weekdays' | 'weekend') => {
+  const handleQuickSelectDays = (type: 'all' | 'weekdays' | 'weekend' | 'sunday') => {
     if (type === 'all') {
       setDaysOfWeek([1, 2, 3, 4, 5, 6, 0]);
       if (frequency !== 'once') setFrequency('daily');
@@ -101,6 +109,9 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
       if (frequency !== 'once') setFrequency('weekly');
     } else if (type === 'weekend') {
       setDaysOfWeek([6, 0]);
+      if (frequency !== 'once') setFrequency('weekly');
+    } else if (type === 'sunday') {
+      setDaysOfWeek([0]); // Chủ Nhật
       if (frequency !== 'once') setFrequency('weekly');
     }
   };
@@ -375,7 +386,14 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
               </div>
 
               {frequency !== 'once' && (
-                <div className="flex gap-1 pt-1">
+                <div className="flex flex-wrap gap-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickSelectDays('sunday')}
+                    className="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 transition cursor-pointer"
+                  >
+                    Chỉ Chủ Nhật
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleQuickSelectDays('all')}
@@ -412,6 +430,10 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
                     setFrequency(newFreq);
                     if (newFreq === 'daily') {
                       setDaysOfWeek([1, 2, 3, 4, 5, 6, 0]);
+                    } else if (newFreq === 'weekly') {
+                      if (daysOfWeek.length === 7) {
+                        setDaysOfWeek([new Date().getDay()]);
+                      }
                     } else if (newFreq === 'once') {
                       setRotationRule('fixed');
                       if (daysOfWeek.length !== 1) {
