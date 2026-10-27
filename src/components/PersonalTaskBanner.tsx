@@ -224,8 +224,8 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
             <div className="p-2.5 bg-white/10 rounded-xl flex items-center space-x-2 text-xs text-indigo-200">
               <Smile className="w-4 h-4 text-indigo-300 shrink-0" />
               <div className="min-w-0">
-                <div className="font-semibold text-white text-xs truncate">Hôm nay bạn không có lịch việc nhà</div>
-                <div className="text-[10px] text-indigo-200/80 truncate">Tận hưởng ngày nghỉ nhé!</div>
+                <div className="font-semibold text-white text-xs truncate">Hôm nay bạn không có việc nhà</div>
+                <div className="text-[10px] text-indigo-200/80 truncate">Tận hưởng ngày nghỉ nhé! (Thành viên mới sẽ bắt đầu nhận việc từ ngày mai)</div>
               </div>
             </div>
           )}

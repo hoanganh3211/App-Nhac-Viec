@@ -196,7 +196,8 @@ export const handleDayRollover = (state: AppState): AppState => {
     return state;
   }
 
-  const updatedChores: Chore[] = state.chores.map((chore) => {
+  // 1. Reset các trạng thái hoàn thành / phạt của ngày cũ
+  const resetChores: Chore[] = state.chores.map((chore) => {
     // If this chore was transferred to someone else previously:
     // Trả lại cho người nhượng kèm điểm thưởng (điểm việc + 1)
     if (chore.originalAssignee) {
@@ -210,9 +211,11 @@ export const handleDayRollover = (state: AppState): AppState => {
         isLatePenalized: false,
         completedAt: undefined,
         completedBy: undefined,
+        redoRequest: undefined,
       };
     }
 
+    // Khi các thành viên ổn định: áp dụng xoay vòng bình thường
     const nextAssignee = chore.isCompletedToday
       ? getNextAssignee(chore.assignedTo, chore.rotationRule, state.members)
       : chore.assignedTo;
@@ -224,13 +227,22 @@ export const handleDayRollover = (state: AppState): AppState => {
       isLatePenalized: false,
       completedAt: undefined,
       completedBy: undefined,
+      redoRequest: undefined,
     };
   });
+
+  // 2. Nếu có thành viên mới gia nhập từ hôm trước (rebalancePendingTomorrow = true):
+  // Tự động phân chia lại công việc công bằng và đều đặn cho tất cả mọi người kể từ hôm nay!
+  let finalChores = resetChores;
+  if (state.rebalancePendingTomorrow) {
+    finalChores = autoBalanceChores(resetChores, state.members);
+  }
 
   return {
     ...state,
     lastDateChecked: today,
-    chores: updatedChores,
+    chores: finalChores,
+    rebalancePendingTomorrow: false,
   };
 };
 

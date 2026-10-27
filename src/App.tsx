@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   Sparkles, 
@@ -8,7 +8,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { AppState, Chore, Member, TransferRequest, ChoreLog } from './types';
-import { loadState, saveState, getTodayDateString, autoBalanceChores } from './utils/storage';
+import { loadState, saveState, getTodayDateString, autoBalanceChores, handleDayRollover } from './utils/storage';
 import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
   getNotificationPermission, 
@@ -54,6 +54,25 @@ export function App() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     return localStorage.getItem(CURRENT_USER_KEY);
   });
+
+  // Current logged in member
+  const currentMember = useMemo(() => {
+    return state.members.find((m) => m.id === currentUserId);
+  }, [state.members, currentUserId]);
+
+  // Anti-loop and anti-flicker refs
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const currentUserIdRef = useRef(currentUserId);
+  currentUserIdRef.current = currentUserId;
+
+  const currentMemberRef = useRef(currentMember);
+  currentMemberRef.current = currentMember;
+
+  const isRemoteUpdateRef = useRef(false);
+  const lastPushedJsonRef = useRef<string>('');
+
   const [activeTab, setActiveTab] = useState<'my_chores' | 'all' | 'pending' | 'completed'>('my_chores');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
@@ -113,17 +132,28 @@ export function App() {
     if (hasActiveRoom && !currentUserId && state.members.length > 0) {
       setIsUserSelectOpen(true);
     }
-  }, [hasActiveRoom, currentUserId, state.members]);
+  }, [hasActiveRoom, currentUserId]);
 
-  // Persist state to localStorage and push silently to Cloud
+  // Persist state to localStorage and push silently to Cloud (có cơ chế chống lặp vô hạn)
   useEffect(() => {
-    if (hasActiveRoom) {
-      saveState(state);
-      pushStateToCloud(state);
+    if (!hasActiveRoom) return;
+    saveState(state);
+
+    const currentJson = JSON.stringify(state);
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
     }
+
+    if (currentJson === lastPushedJsonRef.current) {
+      return;
+    }
+
+    lastPushedJsonRef.current = currentJson;
+    pushStateToCloud(state);
   }, [state, hasActiveRoom]);
 
-  // Realtime subscription via Supabase if configured by dev
+  // Realtime subscription via Supabase if configured by dev (có lọc dữ liệu chống giật màn hình)
   useEffect(() => {
     if (!hasActiveRoom) return;
     const supabase = getSupabaseClient();
@@ -142,6 +172,12 @@ export function App() {
         (payload) => {
           if (payload.new && (payload.new as any).state_data) {
             const newState = (payload.new as any).state_data as AppState;
+            const newJson = JSON.stringify(newState);
+            if (newJson === JSON.stringify(stateRef.current) || newJson === lastPushedJsonRef.current) {
+              return;
+            }
+            isRemoteUpdateRef.current = true;
+            lastPushedJsonRef.current = newJson;
             setState(newState);
           }
         }
@@ -152,11 +188,6 @@ export function App() {
       supabase.removeChannel(channel);
     };
   }, [state.roomCode, hasActiveRoom]);
-
-  // Current logged in member
-  const currentMember = useMemo(() => {
-    return state.members.find((m) => m.id === currentUserId);
-  }, [state.members, currentUserId]);
 
   // Targeted chores for current user
   const myChores = useMemo(() => {
@@ -172,17 +203,31 @@ export function App() {
     );
   }, [state.transferRequests, currentUserId]);
 
-  // Check Overdue and Apply Late Penalties (Quy tắc trừ điểm trễ & tái phạm)
-  const checkOverduePenalties = useCallback(() => {
+  // Periodic check (Midnight rollover, notifications cá nhân, và phạt trừ điểm trễ)
+  const runPeriodicTasks = useCallback(() => {
     if (!hasActiveRoom) return;
+    const currentState = stateRef.current;
+    const todayStr = getTodayDateString();
+
+    // 1. Tự động kiểm tra sang ngày mới (Midnight Rollover & Phân chia việc cho người mới)
+    if (currentState.lastDateChecked !== todayStr) {
+      const rolledOver = handleDayRollover(currentState);
+      setState(rolledOver);
+      return;
+    }
+
+    // 2. Thông báo việc sắp đến hạn của người dùng hiện tại
+    checkAndNotifyMyChores(currentState.chores, currentUserIdRef.current, currentMemberRef.current);
+
+    // 3. Kiểm tra quá hạn và trừ điểm
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     let hasPenaltyApplied = false;
-    let updatedMembers = [...state.members];
-    let updatedLogs = [...state.logs];
+    let updatedMembers = [...currentState.members];
+    let updatedLogs = [...currentState.logs];
 
-    const updatedChores = state.chores.map((chore) => {
+    const updatedChores = currentState.chores.map((chore) => {
       if (chore.isCompletedToday || chore.isLatePenalized) return chore;
 
       const [dueH, dueM] = chore.dueTime.split(':').map(Number);
@@ -244,19 +289,15 @@ export function App() {
         logs: updatedLogs,
       }));
     }
-  }, [state.chores, state.members, state.logs, hasActiveRoom]);
+  }, [hasActiveRoom]);
 
-  // Periodic checks (notifications + late penalty checks every 60s)
+  // Định kỳ chạy mỗi 60 giây (không tạo vòng lặp render)
   useEffect(() => {
     if (!hasActiveRoom) return;
-    checkAndNotifyMyChores(state.chores, currentUserId, currentMember);
-    checkOverduePenalties();
-    const interval = setInterval(() => {
-      checkAndNotifyMyChores(state.chores, currentUserId, currentMember);
-      checkOverduePenalties();
-    }, 60000);
+    runPeriodicTasks();
+    const interval = setInterval(runPeriodicTasks, 60000);
     return () => clearInterval(interval);
-  }, [state.chores, currentUserId, currentMember, checkOverduePenalties, hasActiveRoom]);
+  }, [hasActiveRoom, runPeriodicTasks]);
 
   const handleSelectUser = (id: string) => {
     setCurrentUserId(id);
@@ -677,13 +718,6 @@ export function App() {
     showToast('Đã quay về màn hình chọn phòng.');
   };
 
-  // Tự động phân chia việc công bằng
-  const handleAutoBalance = () => {
-    const balanced = autoBalanceChores(state.chores, state.members);
-    setState((prev) => ({ ...prev, chores: balanced }));
-    showToast('⚖️ Đã tự động phân chia công việc công bằng cho mọi người!');
-  };
-
   const handleNudge = async (chore: Chore, assignee?: Member) => {
     playNudgeSound();
     const tag = assignee ? `@${assignee.zaloName || assignee.name}` : 'bạn';
@@ -728,10 +762,8 @@ export function App() {
 
     const updatedMembers = [...existingMembers, newMember];
 
-    // 2. Tự động chia đều lại toàn bộ công việc nhà khi có thêm người mới
-    const rebalancedChores = autoBalanceChores(state.chores, updatedMembers);
-
-    // 3. Ghi log hoạt động gia nhập
+    // 2. KHÔNG đảo lộn công việc của ngày hôm nay (giữ nguyên để tránh ảnh hưởng việc đang làm/đã làm)
+    // Đánh dấu rebalancePendingTomorrow = true để tự động chia đều cho người mới từ NGÀY MAI
     const joinLog: ChoreLog = {
       id: 'log_join_' + Date.now(),
       choreId: 'join',
@@ -742,38 +774,48 @@ export function App() {
       pointsEarned: avgPoints,
       type: 'completed',
       note: avgPoints > 0
-        ? `Cấp ${avgPoints}đ khởi đầu (theo điểm TB phòng) & chia đều lại việc nhà`
-        : 'Thành viên mới gia nhập phòng',
+        ? `Cấp ${avgPoints}đ khởi đầu (TB phòng). Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai`
+        : `Gia nhập phòng. Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai`,
     };
 
     setState((prev) => ({
       ...prev,
       members: updatedMembers,
-      chores: rebalancedChores,
+      rebalancePendingTomorrow: true,
       logs: [joinLog, ...prev.logs],
     }));
 
     handleSelectUser(newMember.id);
     showToast(
       avgPoints > 0
-        ? `🎉 Đã thêm ${name}! Cấp ${avgPoints}đ khởi điểm (TB phòng) & chia đều lại việc nhà.`
-        : `🎉 Đã thêm ${name} và phân chia đều lại việc nhà!`
+        ? `🎉 Đã thêm ${name} (Khởi điểm: ${avgPoints}đ)! Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai.`
+        : `🎉 Đã thêm ${name}! Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai.`
     );
   };
 
   const handleDeleteMember = (id: string) => {
     const remainingMembers = state.members.filter((m) => m.id !== id);
-    const rebalancedChores = autoBalanceChores(state.chores, remainingMembers);
+    const updatedChores = state.chores.map((chore) => {
+      if (chore.assignedTo === id && remainingMembers.length > 0) {
+        return {
+          ...chore,
+          assignedTo: remainingMembers[0].id,
+        };
+      }
+      return chore;
+    });
+
     setState((prev) => ({
       ...prev,
       members: remainingMembers,
-      chores: rebalancedChores,
+      chores: updatedChores,
+      rebalancePendingTomorrow: true,
     }));
     if (currentUserId === id) {
       setCurrentUserId(null);
       localStorage.removeItem(CURRENT_USER_KEY);
     }
-    showToast('Đã xóa thành viên và phân bổ lại việc nhà.');
+    showToast('Đã xóa thành viên. Lịch việc nhà sẽ được cân bằng lại vào ngày mai.');
   };
 
   const handleUpdateRoomName = (name: string) => {
@@ -864,7 +906,6 @@ export function App() {
         {/* Fairness & Karma Board */}
         <FairnessBoard 
           members={state.members} 
-          onAutoBalance={handleAutoBalance}
         />
 
         {/* Filter Tabs */}

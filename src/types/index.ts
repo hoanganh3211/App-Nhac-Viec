@@ -73,4 +73,5 @@ export interface AppState {
   logs: ChoreLog[];
   transferRequests: TransferRequest[];
   lastDateChecked: string;
+  rebalancePendingTomorrow?: boolean; // Đánh dấu chia đều lại việc vào ngày mai khi có người mới gia nhập
 }

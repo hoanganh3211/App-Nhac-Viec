@@ -1,13 +1,12 @@
 import React from 'react';
-import { Award, Scale, AlertTriangle, Sparkles, ArrowRightLeft, RefreshCw } from 'lucide-react';
+import { Award, Scale, AlertTriangle, Sparkles, ArrowRightLeft } from 'lucide-react';
 import { Member } from '../types';
 
 interface FairnessBoardProps {
   members: Member[];
-  onAutoBalance?: () => void;
 }
 
-export const FairnessBoard: React.FC<FairnessBoardProps> = ({ members, onAutoBalance }) => {
+export const FairnessBoard: React.FC<FairnessBoardProps> = ({ members }) => {
   const sortedMembers = [...members].sort((a, b) => b.points - a.points);
   const maxPoints = Math.max(...members.map((m) => m.points), 1);
   const totalPoints = members.reduce((sum, m) => sum + m.points, 0);
@@ -40,16 +39,6 @@ export const FairnessBoard: React.FC<FairnessBoardProps> = ({ members, onAutoBal
 
         {/* Fairness Ratio Pill */}
         <div className="flex items-center space-x-1.5 shrink-0">
-          {onAutoBalance && (
-            <button
-              onClick={onAutoBalance}
-              title="Phân chia lại việc công bằng cho các thành viên"
-              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-          )}
-
           <span
             className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 whitespace-nowrap ${
               fairnessRatio >= 80

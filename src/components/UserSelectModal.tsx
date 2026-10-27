@@ -37,6 +37,7 @@ export const UserSelectModal: React.FC<UserSelectModalProps> = ({
     setIsAddingNew(false);
     setNewName('');
     setNewZalo('');
+    onClose();
   };
 
   return (
@@ -114,7 +115,7 @@ export const UserSelectModal: React.FC<UserSelectModalProps> = ({
                 <div className="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-[11px] text-emerald-950 flex items-start space-x-2">
                   <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <span>
-                    <strong>Cơ chế điểm công bằng:</strong> Bạn sẽ nhận ngay <strong>{avgPoints} điểm</strong> khởi điểm (theo điểm TB phòng) và toàn bộ việc nhà sẽ được chia đều lại!
+                    <strong>Cơ chế công bằng:</strong> Bạn nhận ngay <strong>{avgPoints} điểm khởi điểm</strong> (điểm TB phòng). Việc nhà của bạn sẽ bắt đầu được chia đều tự động từ <strong>ngày mai</strong> để không xáo trộn việc hôm nay!
                   </span>
                 </div>
               )}

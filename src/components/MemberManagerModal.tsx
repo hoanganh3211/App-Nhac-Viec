@@ -138,7 +138,7 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
               <div className="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-[11px] text-emerald-950 flex items-start space-x-2">
                 <span className="text-sm">🛡️</span>
                 <span>
-                  <strong>Bảo vệ người mới:</strong> Thành viên mới sẽ nhận ngay <strong>{avgPoints} điểm</strong> (điểm TB phòng) và toàn bộ việc nhà sẽ được tự động chia đều lại!
+                  <strong>Bảo vệ người mới:</strong> Thành viên mới nhận ngay <strong>{avgPoints} điểm khởi điểm</strong> (điểm TB phòng). Lịch việc nhà sẽ bắt đầu chia đều cho người mới từ <strong>ngày mai</strong> để không xáo trộn việc hôm nay!
                 </span>
               </div>
             )}
