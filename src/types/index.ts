@@ -2,7 +2,7 @@ export interface Member {
   id: string;
   name: string;
   avatar: string; // emoji or initial
-  color: string; // Tailwind color class or hex
+  color: string;
   points: number; // Điểm tích lũy công việc
   streak: number; // Chuỗi ngày hoàn thành liên tục
   zaloName?: string; // Tên hiển thị/tag trong Zalo
@@ -15,7 +15,7 @@ export interface Chore {
   id: string;
   title: string;
   category: 'cleaning' | 'kitchen' | 'trash' | 'shopping' | 'other';
-  points: number; // 1 (nhẹ), 2 (vừa), 3-5 (nặng như cọ toilet/lau bếp dầu mỡ)
+  points: number;
   frequency: FrequencyType;
   dueTime: string; // Ví dụ: "20:00"
   assignedTo: string; // memberId
@@ -55,6 +55,6 @@ export interface AppState {
   chores: Chore[];
   logs: ChoreLog[];
   penalties: PenaltyRecord[];
-  lastDateChecked: string; // Dùng để reset chu kỳ ngày mới (YYYY-MM-DD)
-  penaltyRate: number; // Ví dụ 10,000 VND / lần trễ
+  lastDateChecked: string;
+  penaltyRate: number;
 }
