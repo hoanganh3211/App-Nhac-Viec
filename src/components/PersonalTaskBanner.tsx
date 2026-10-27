@@ -31,7 +31,7 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
             <div className="min-w-0">
               <div className="font-bold text-xs truncate">Bạn chưa chọn mình là ai!</div>
               <div className="text-[11px] text-indigo-100 truncate">
-                Bấm vào đây để chọn tên bạn để nhận việc riêng.
+                Bấm vào đây để chọn tên bạn và nhận việc riêng.
               </div>
             </div>
           </div>
@@ -55,15 +55,9 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
           <div className="min-w-0">
             <div className="flex items-center space-x-1">
               <span className="text-[11px] text-indigo-200">Chào,</span>
-              <h3 className="font-bold text-xs text-white truncate max-w-[120px]">
+              <h3 className="font-bold text-xs text-white truncate max-w-[150px]">
                 {currentMember.name}
               </h3>
-              <button
-                onClick={onOpenUserSelect}
-                className="text-[10px] text-indigo-300 hover:text-white underline shrink-0"
-              >
-                (Đổi)
-              </button>
             </div>
             <div className="text-[10px] text-indigo-200/90 whitespace-nowrap">
               Điểm: <strong className="text-amber-300">{currentMember.points}đ</strong> • Chuỗi: 🔥{currentMember.streak}

@@ -4,9 +4,10 @@ import {
   Users, 
   History, 
   Coins, 
-  Cloud, 
   Smartphone, 
-  ChevronRight
+  UserCheck, 
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
 import { Member } from '../types';
 
@@ -16,12 +17,10 @@ interface MenuDrawerProps {
   roomName: string;
   roomCode: string;
   currentMember?: Member;
-  isCloudConnected: boolean;
   onOpenUserSelect: () => void;
   onOpenMembers: () => void;
   onOpenHistory: () => void;
   onOpenPenalty: () => void;
-  onOpenCloudSync: () => void;
   onOpenPWA: () => void;
 }
 
@@ -31,12 +30,10 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   roomName,
   roomCode,
   currentMember,
-  isCloudConnected,
   onOpenUserSelect,
   onOpenMembers,
   onOpenHistory,
   onOpenPenalty,
-  onOpenCloudSync,
   onOpenPWA,
 }) => {
   if (!isOpen) return null;
@@ -69,27 +66,45 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
           </button>
         </div>
 
-        {/* Current user chip banner */}
-        <div className="p-4 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <span className="text-2xl">{currentMember?.avatar || '👤'}</span>
-            <div>
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Tài khoản trên máy này</div>
-              <div className="text-xs font-bold text-slate-800">
+        {/* Current user & Switch user (Nơi duy nhất đổi người dùng) */}
+        <div className="p-4 bg-indigo-50/60 border-b border-indigo-100 flex items-center justify-between">
+          <div className="flex items-center space-x-2.5 min-w-0 mr-2">
+            <span className="text-2xl shrink-0">{currentMember?.avatar || '👤'}</span>
+            <div className="min-w-0">
+              <div className="text-[10px] text-indigo-900/70 font-semibold uppercase">Bạn đang dùng là:</div>
+              <div className="text-xs font-bold text-slate-900 truncate">
                 {currentMember ? currentMember.name : 'Chưa chọn danh tính'}
               </div>
             </div>
           </div>
           <button
             onClick={() => handleAction(onOpenUserSelect)}
-            className="px-2.5 py-1 text-xs font-semibold text-indigo-600 bg-white border border-indigo-200/80 rounded-xl hover:bg-indigo-50 transition"
+            className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50 shadow-2xs transition shrink-0 whitespace-nowrap"
           >
-            Đổi
+            Đổi người
           </button>
         </div>
 
-        {/* Menu list */}
+        {/* Menu Items */}
         <div className="p-3 space-y-1 overflow-y-auto">
+          {/* Change user option */}
+          <button
+            onClick={() => handleAction(onOpenUserSelect)}
+            className="w-full p-3 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                <UserCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-slate-800">Đổi người dùng ("Tôi là ai")</div>
+                <div className="text-[11px] text-slate-400">Chọn hoặc tạo tài khoản của bạn trong phòng</div>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
+          </button>
+
+          {/* Members */}
           <button
             onClick={() => handleAction(onOpenMembers)}
             className="w-full p-3 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group"
@@ -100,12 +115,13 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </div>
               <div>
                 <div className="text-xs font-semibold text-slate-800">Thành viên phòng</div>
-                <div className="text-[11px] text-slate-400">Xem và thêm bớt bạn cùng phòng</div>
+                <div className="text-[11px] text-slate-400">Xem và quản lý người ở chung phòng</div>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
           </button>
 
+          {/* History */}
           <button
             onClick={() => handleAction(onOpenHistory)}
             className="w-full p-3 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group"
@@ -122,6 +138,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
           </button>
 
+          {/* Penalty fund */}
           <button
             onClick={() => handleAction(onOpenPenalty)}
             className="w-full p-3 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group"
@@ -138,47 +155,28 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
           </button>
 
-          <button
-            onClick={() => handleAction(onOpenCloudSync)}
-            className="w-full p-3 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group"
-          >
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center relative">
-                <Cloud className="w-4 h-4" />
-                {isCloudConnected && (
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500" />
-                )}
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-800 flex items-center space-x-1.5">
-                  <span>Đồng bộ Cloud & Chia sẻ</span>
-                  {isCloudConnected && (
-                    <span className="text-[9px] text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full font-bold">
-                      Đã nối
-                    </span>
-                  )}
-                </div>
-                <div className="text-[11px] text-slate-400">Gửi link phòng & Supabase Database</div>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
-          </button>
-
+          {/* PWA guide */}
           <button
             onClick={() => handleAction(onOpenPWA)}
             className="w-full p-3 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group"
           >
             <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                 <Smartphone className="w-4 h-4" />
               </div>
               <div>
                 <div className="text-xs font-semibold text-slate-800">Cài app ra màn hình</div>
-                <div className="text-[11px] text-slate-400">Hướng dẫn iPhone & Android</div>
+                <div className="text-[11px] text-slate-400">Hướng dẫn cho iPhone & Android</div>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
           </button>
+        </div>
+
+        {/* Footer info */}
+        <div className="p-3 bg-slate-50 border-t border-slate-100 text-center text-[10px] text-slate-400 flex items-center justify-center space-x-1">
+          <Sparkles className="w-3 h-3 text-indigo-500" />
+          <span>ViệcNhà • Tự động đồng bộ Realtime</span>
         </div>
       </div>
     </div>

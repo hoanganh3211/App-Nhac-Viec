@@ -16,7 +16,6 @@ import {
   checkAndNotifyMyChores 
 } from './utils/notifications';
 import { 
-  getSupabaseConfig, 
   getSupabaseClient, 
   pushStateToCloud, 
   fetchStateFromCloud 
@@ -32,7 +31,6 @@ import { HistoryModal } from './components/HistoryModal';
 import { PenaltyModal } from './components/PenaltyModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { UserSelectModal } from './components/UserSelectModal';
-import { CloudSyncModal } from './components/CloudSyncModal';
 import { MenuDrawer } from './components/MenuDrawer';
 import { shareToZalo } from './utils/zalo';
 
@@ -58,7 +56,6 @@ export function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isPenaltyOpen, setIsPenaltyOpen] = useState(false);
   const [isPWAOpen, setIsPWAOpen] = useState(false);
-  const [isCloudSyncOpen, setIsCloudSyncOpen] = useState(false);
 
   // Check URL query for room code (?room=xyz) on mount
   useEffect(() => {
@@ -82,13 +79,13 @@ export function App() {
     }
   }, [currentUserId, state.members]);
 
-  // Persist state to localStorage and push to Cloud
+  // Persist state to localStorage and push silently to Cloud (handled by dev setup)
   useEffect(() => {
     saveState(state);
     pushStateToCloud(state);
   }, [state]);
 
-  // Realtime subscription via Supabase if configured
+  // Realtime subscription via Supabase if configured by dev
   useEffect(() => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
@@ -350,8 +347,6 @@ export function App() {
     month: 'numeric',
   });
 
-  const isCloudConnected = Boolean(getSupabaseConfig()?.url);
-
   return (
     <div 
       className="min-h-screen max-w-md mx-auto relative bg-slate-50 flex flex-col font-sans"
@@ -363,10 +358,7 @@ export function App() {
       {/* Sleek, Non-wrapping Top Header */}
       <Navbar
         roomName={state.roomName}
-        currentMember={currentMember}
         uncompletedCount={uncompletedCount}
-        isCloudConnected={isCloudConnected}
-        onOpenUserSelect={() => setIsUserSelectOpen(true)}
         onOpenAddChore={() => setIsAddChoreOpen(true)}
         onOpenMenu={() => setIsMenuOpen(true)}
       />
@@ -511,19 +503,17 @@ export function App() {
         </div>
       )}
 
-      {/* Menu Drawer */}
+      {/* Menu Drawer (Nơi DUY NHẤT để đổi người dùng và mở các mục phụ) */}
       <MenuDrawer
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         roomName={state.roomName}
         roomCode={state.roomCode}
         currentMember={currentMember}
-        isCloudConnected={isCloudConnected}
         onOpenUserSelect={() => setIsUserSelectOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenPenalty={() => setIsPenaltyOpen(true)}
-        onOpenCloudSync={() => setIsCloudSyncOpen(true)}
         onOpenPWA={() => setIsPWAOpen(true)}
       />
 
@@ -535,13 +525,6 @@ export function App() {
         currentUserId={currentUserId}
         onSelectUser={handleSelectUser}
         onAddNewMember={handleAddMember}
-      />
-
-      <CloudSyncModal
-        isOpen={isCloudSyncOpen}
-        onClose={() => setIsCloudSyncOpen(false)}
-        state={state}
-        onApplyCloudState={(newState) => setState(newState)}
       />
 
       <AddChoreModal
