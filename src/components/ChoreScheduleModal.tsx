@@ -233,8 +233,14 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
 
     // Chores scheduled for this day of week
     const scheduledChores = relevantChores.filter((c) => {
-      if (c.frequency === 'once') return true;
-      if (c.frequency === 'daily') return true;
+      if (c.frequency === 'once') {
+        if (!c.daysOfWeek || c.daysOfWeek.length === 0) return true;
+        return c.daysOfWeek.includes(dayOfWeek);
+      }
+      if (c.frequency === 'daily') {
+        if (!c.daysOfWeek || c.daysOfWeek.length === 0 || c.daysOfWeek.length === 7) return true;
+        return c.daysOfWeek.includes(dayOfWeek);
+      }
       if (!c.daysOfWeek || c.daysOfWeek.length === 0) return true;
       return c.daysOfWeek.includes(dayOfWeek);
     });
@@ -442,8 +448,14 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
                   // Chores scheduled for this day of week
                   const dayChores = chores.filter((c) => {
                     if (selectedMemberId !== 'all' && c.assignedTo !== selectedMemberId) return false;
-                    if (c.frequency === 'once') return true;
-                    if (c.frequency === 'daily') return true;
+                    if (c.frequency === 'once') {
+                      if (!c.daysOfWeek || c.daysOfWeek.length === 0) return true;
+                      return c.daysOfWeek.includes(dOfWeek);
+                    }
+                    if (c.frequency === 'daily') {
+                      if (!c.daysOfWeek || c.daysOfWeek.length === 0 || c.daysOfWeek.length === 7) return true;
+                      return c.daysOfWeek.includes(dOfWeek);
+                    }
                     if (!c.daysOfWeek || c.daysOfWeek.length === 0) return true;
                     return c.daysOfWeek.includes(dOfWeek);
                   });

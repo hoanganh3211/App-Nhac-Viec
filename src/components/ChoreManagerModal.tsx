@@ -345,7 +345,11 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
                   <span>Làm việc vào thứ mấy?</span>
                 </span>
                 <span className="text-[10px] text-indigo-600 font-semibold">
-                  {frequency === 'once' ? '(Chọn 1 thứ)' : `(${daysOfWeek.length} ngày)`}
+                  {frequency === 'once' 
+                    ? `(Làm 1 lần: ${DAYS_OF_WEEK.find(d => d.day === daysOfWeek[0])?.full || 'Hôm nay'})` 
+                    : frequency === 'daily'
+                    ? '(Hàng ngày: Cả 7 ngày T2-CN)'
+                    : `(Hàng tuần: ${daysOfWeek.map(d => DAYS_OF_WEEK.find(x => x.day === d)?.label).join(', ')})`}
                 </span>
               </div>
 
@@ -377,7 +381,7 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
                     onClick={() => handleQuickSelectDays('all')}
                     className="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 transition cursor-pointer"
                   >
-                    Cả tuần
+                    Cả tuần (T2-CN)
                   </button>
                   <button
                     type="button"
@@ -408,6 +412,11 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
                     setFrequency(newFreq);
                     if (newFreq === 'daily') {
                       setDaysOfWeek([1, 2, 3, 4, 5, 6, 0]);
+                    } else if (newFreq === 'once') {
+                      setRotationRule('fixed');
+                      if (daysOfWeek.length !== 1) {
+                        setDaysOfWeek([new Date().getDay()]);
+                      }
                     }
                   }}
                   className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 cursor-pointer"

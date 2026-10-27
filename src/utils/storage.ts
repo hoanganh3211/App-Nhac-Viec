@@ -223,11 +223,16 @@ export const isChoreScheduledToday = (chore: Chore): boolean => {
 };
 
 export const formatChoreDays = (days?: number[], frequency?: FrequencyType): string => {
-  if (frequency === 'once') return '⚡ 1 lần duy nhất';
-  if (!days || days.length === 0 || days.length === 7 || frequency === 'daily') {
-    return 'Hàng ngày';
-  }
   const dayMap: Record<number, string> = {
+    1: 'Thứ 2',
+    2: 'Thứ 3',
+    3: 'Thứ 4',
+    4: 'Thứ 5',
+    5: 'Thứ 6',
+    6: 'Thứ 7',
+    0: 'Chủ Nhật',
+  };
+  const shortDayMap: Record<number, string> = {
     1: 'T2',
     2: 'T3',
     3: 'T4',
@@ -236,7 +241,19 @@ export const formatChoreDays = (days?: number[], frequency?: FrequencyType): str
     6: 'T7',
     0: 'CN',
   };
-  return days.map((d) => dayMap[d] || d).join(', ');
+
+  if (frequency === 'once') {
+    if (days && days.length > 0) {
+      return `⚡ 1 lần (${dayMap[days[0]] || 'Hôm nay'})`;
+    }
+    return '⚡ 1 lần duy nhất';
+  }
+
+  if (!days || days.length === 0 || days.length === 7 || frequency === 'daily') {
+    return 'Hàng ngày (T2-CN)';
+  }
+
+  return days.map((d) => shortDayMap[d] || d).join(', ');
 };
 
 // Rollover for new day

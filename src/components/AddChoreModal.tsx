@@ -215,7 +215,11 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                 <span>Làm việc vào thứ mấy?</span>
               </span>
               <span className="text-[10px] text-indigo-600 font-semibold">
-                {frequency === 'once' ? '(Chọn 1 thứ duy nhất)' : `(Đã chọn ${daysOfWeek.length} ngày)`}
+                {frequency === 'once' 
+                  ? `(Làm 1 lần: ${DAYS_OF_WEEK.find(d => d.day === daysOfWeek[0])?.full || 'Hôm nay'})` 
+                  : frequency === 'daily'
+                  ? '(Hàng ngày: Cả 7 ngày T2-CN)'
+                  : `(Hàng tuần: ${daysOfWeek.map(d => DAYS_OF_WEEK.find(x => x.day === d)?.label).join(', ')})`}
               </span>
             </div>
 
@@ -302,7 +306,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                 }`}
               >
                 <div className="text-xs font-bold">Hàng ngày</div>
-                <div className="text-[10px] text-slate-400">Lặp lại đủ 7 ngày (T2-CN)</div>
+                <div className="text-[10px] text-slate-500">Tự động chọn cả 7 ngày (T2 ➔ CN)</div>
               </button>
 
               <button
@@ -315,7 +319,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                 }`}
               >
                 <div className="text-xs font-bold">Hàng tuần</div>
-                <div className="text-[10px] text-slate-400">Lặp vào các thứ đã chọn</div>
+                <div className="text-[10px] text-slate-500">Lặp vào các thứ đã chọn</div>
               </button>
 
               <button
@@ -328,13 +332,19 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                 }`}
               >
                 <div className="text-xs font-bold">Cách ngày</div>
-                <div className="text-[10px] text-slate-400">2 ngày làm 1 lần</div>
+                <div className="text-[10px] text-slate-500">2 ngày làm 1 lần</div>
               </button>
 
               {/* OPTION VIỆC PHÁT SINH 1 LẦN DUY NHẤT */}
               <button
                 type="button"
-                onClick={() => setFrequency('once')}
+                onClick={() => {
+                  setFrequency('once');
+                  setRotationRule('fixed');
+                  if (daysOfWeek.length !== 1) {
+                    setDaysOfWeek([todayDayIndex]);
+                  }
+                }}
                 className={`p-2.5 rounded-2xl border text-left transition cursor-pointer relative overflow-hidden ${
                   frequency === 'once'
                     ? 'bg-amber-50 border-amber-500 text-amber-950 shadow-xs'
@@ -345,7 +355,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                   <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
                   <span>Làm 1 lần</span>
                 </div>
-                <div className="text-[10px] text-amber-900/70">Phát sinh việc chung đột xuất</div>
+                <div className="text-[10px] text-amber-900/70">Chỉ làm đúng 1 ngày hẹn</div>
               </button>
             </div>
 
@@ -354,7 +364,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
               <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start space-x-2 text-amber-900 text-[11px] animate-in fade-in duration-150">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <strong>Việc chung phát sinh 1 lần duy nhất:</strong> Sau khi người phụ trách hoàn thành và sang ngày mới, việc này sẽ tự động kết thúc và không lặp lại chu kỳ.
+                  <strong>Việc chung làm 1 lần ({DAYS_OF_WEEK.find(d => d.day === daysOfWeek[0])?.full || 'Hôm nay'}):</strong> Việc chỉ xuất hiện trên danh sách đúng vào ngày này (không hiện sớm trước hạn). Sau khi làm xong sẽ tự động đóng và không lặp lại.
                 </div>
               </div>
             )}

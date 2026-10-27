@@ -136,7 +136,13 @@ export const getTomorrowChoresForUser = (
     const projected = autoBalanceChores(chores, members);
     return projected.filter((c) => {
       if (c.assignedTo !== userId) return false;
-      if (c.frequency === 'once') return !c.isCompletedToday;
+      if (c.frequency === 'once') {
+        if (c.isCompletedToday) return false;
+        if (c.daysOfWeek && c.daysOfWeek.length > 0 && !c.daysOfWeek.includes(tomorrowDay)) {
+          return false;
+        }
+        return true;
+      }
       if (c.daysOfWeek && c.daysOfWeek.length > 0 && !c.daysOfWeek.includes(tomorrowDay)) {
         return false;
       }
@@ -145,9 +151,13 @@ export const getTomorrowChoresForUser = (
   }
 
   return chores.filter((chore) => {
-    // If it's a 1-time chore: if completed today, it won't exist tomorrow!
+    // If it's a 1-time chore: check if assigned to user, not completed, and scheduled for tomorrow
     if (chore.frequency === 'once') {
-      return !chore.isCompletedToday && chore.assignedTo === userId;
+      if (chore.isCompletedToday || chore.assignedTo !== userId) return false;
+      if (chore.daysOfWeek && chore.daysOfWeek.length > 0 && !chore.daysOfWeek.includes(tomorrowDay)) {
+        return false;
+      }
+      return true;
     }
 
     // Check if tomorrow is in chore's scheduled days
