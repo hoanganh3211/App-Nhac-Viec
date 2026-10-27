@@ -1,4 +1,5 @@
 import { Chore, Member } from '../types';
+import { isChoreScheduledToday } from './storage';
 
 export const generateZaloDailyReminder = (
   roomName: string,
@@ -12,19 +13,23 @@ export const generateZaloDailyReminder = (
     month: 'numeric',
   });
 
-  const memberMap = new Map(members.map((m) => [m.id, m]));
-  const pendingChores = chores.filter((c) => !c.isCompletedToday);
-  const doneChores = chores.filter((c) => c.isCompletedToday);
+  const memberMap = new Map((members || []).map((m) => [m.id, m]));
+  // Chỉ lọc các công việc thực sự lên lịch làm vào HÔM NAY (tránh việc Chủ Nhật hiện vào Thứ Ba)
+  const todayChores = (chores || []).filter((c) => isChoreScheduledToday(c));
+  const pendingChores = todayChores.filter((c) => !c.isCompletedToday);
+  const doneChores = todayChores.filter((c) => c.isCompletedToday);
   const inviteUrl = `${window.location.origin}?room=${encodeURIComponent(roomCode)}`;
 
   let message = `🏠 [${roomName.toUpperCase()}] - LỜI NHẮC VIỆC NHÀ (${today})\n`;
   message += `🔑 Mã phòng: ${roomCode}\n`;
   message += `━━━━━━━━━━━━━━━━━━━━\n`;
 
-  if (pendingChores.length === 0) {
-    message += `🎉 Tuyệt vời! Tất cả việc nhà hôm nay đã hoàn thành 100%!\nPhòng mình siêu sạch sẽ và ngăn nắp! ✨\n`;
+  if (todayChores.length === 0) {
+    message += `🎉 Hôm nay phòng mình không có việc nhà nào được lên lịch!\nMọi người hãy nghỉ ngơi và tận hưởng nhé ✨\n`;
+  } else if (pendingChores.length === 0) {
+    message += `🎉 Tuyệt vời! Tất cả việc nhà hôm nay (${todayChores.length}/${todayChores.length}) đã hoàn thành 100%!\nPhòng mình siêu sạch sẽ và ngăn nắp! ✨\n`;
   } else {
-    message += `📋 VIỆC CẦN LÀM HÔM NAY:\n`;
+    message += `📋 VIỆC CẦN LÀM HÔM NAY (${pendingChores.length} việc):\n`;
     pendingChores.forEach((chore, index) => {
       const assignee = memberMap.get(chore.assignedTo);
       const assigneeName = assignee ? `@${assignee.zaloName || assignee.name}` : 'Chưa giao';
@@ -36,7 +41,7 @@ export const generateZaloDailyReminder = (
   }
 
   if (doneChores.length > 0) {
-    message += `✅ ĐÃ XONG:\n`;
+    message += `✅ ĐÃ XONG (${doneChores.length}/${todayChores.length}):\n`;
     doneChores.forEach((chore) => {
       const completedPerson = memberMap.get(chore.completedBy || chore.assignedTo);
       message += `• ${chore.icon} ${chore.title} (${completedPerson?.name || 'Đã xong'})\n`;

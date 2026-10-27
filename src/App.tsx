@@ -1706,14 +1706,16 @@ export function App() {
       />
 
       {/* Zalo Reminder Modal */}
-      <ZaloReminderModal
-        isOpen={isZaloOpen}
-        onClose={() => setIsZaloOpen(false)}
-        roomName={state.roomName}
-        roomCode={state.roomCode}
-        chores={state.chores}
-        members={state.members}
-      />
+      {isZaloOpen && (
+        <ZaloReminderModal
+          isOpen={isZaloOpen}
+          onClose={() => setIsZaloOpen(false)}
+          roomName={state.roomName}
+          roomCode={state.roomCode}
+          chores={state.chores || []}
+          members={state.members || []}
+        />
+      )}
 
       {/* History Modal */}
       <HistoryModal
