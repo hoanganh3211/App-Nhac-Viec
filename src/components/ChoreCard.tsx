@@ -1,6 +1,7 @@
 import React from 'react';
-import { CheckCircle2, Circle, Clock, Flame, Send, ArrowRightLeft, Sparkles, Lock, RotateCcw, Undo2 } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Flame, Send, ArrowRightLeft, Sparkles, Lock, RotateCcw, Undo2, Calendar } from 'lucide-react';
 import { Chore, Member } from '../types';
+import { formatChoreDays } from '../utils/storage';
 
 interface ChoreCardProps {
   chore: Chore;
@@ -116,6 +117,17 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
                 <Flame className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
                 <span>+{rewardPoints}đ</span>
               </span>
+
+              {chore.frequency === 'once' ? (
+                <span className="inline-flex items-center space-x-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-900 border border-amber-300 shrink-0 whitespace-nowrap">
+                  <span>⚡ 1 lần</span>
+                </span>
+              ) : chore.daysOfWeek && chore.daysOfWeek.length > 0 && chore.daysOfWeek.length < 7 && (
+                <span className="inline-flex items-center space-x-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600 border border-slate-200 shrink-0 whitespace-nowrap">
+                  <Calendar className="w-2.5 h-2.5 text-slate-400" />
+                  <span>{formatChoreDays(chore.daysOfWeek, chore.frequency)}</span>
+                </span>
+              )}
 
               {chore.nextBonusPoints && !chore.isCompletedToday && (
                 <span className="inline-flex items-center space-x-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60 shrink-0 whitespace-nowrap">

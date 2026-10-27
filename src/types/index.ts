@@ -9,7 +9,7 @@ export interface Member {
   zaloName?: string;
 }
 
-export type FrequencyType = 'daily' | 'alternate' | 'weekly' | 'custom';
+export type FrequencyType = 'daily' | 'alternate' | 'weekly' | 'custom' | 'once';
 export type RotationRule = 'round-robin' | 'least-points' | 'fixed';
 
 export interface RedoRequest {
@@ -25,6 +25,7 @@ export interface Chore {
   category: 'cleaning' | 'kitchen' | 'trash' | 'shopping' | 'other';
   points: number; // Điểm cơ bản (việc nặng nhiều điểm)
   frequency: FrequencyType;
+  daysOfWeek?: number[]; // Các thứ trong tuần làm việc này: 0 = CN, 1 = T2, ..., 6 = T7
   dueTime: string; // Ví dụ "20:00"
   assignedTo: string; // memberId đang phụ trách
   rotationRule: RotationRule;

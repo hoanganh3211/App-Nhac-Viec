@@ -8,7 +8,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { AppState, Chore, Member, TransferRequest, ChoreLog, RoomProposal, AppNotification } from './types';
-import { loadState, saveState, getTodayDateString, autoBalanceChores, handleDayRollover } from './utils/storage';
+import { loadState, saveState, getTodayDateString, autoBalanceChores, handleDayRollover, isChoreScheduledToday } from './utils/storage';
 import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
   getNotificationPermission, 
@@ -213,10 +213,10 @@ export function App() {
     };
   }, [state.roomCode, hasActiveRoom]);
 
-  // Targeted chores for current user
+  // Targeted chores for current user (hôm nay có lịch)
   const myChores = useMemo(() => {
     if (!currentUserId) return [];
-    return state.chores.filter((c) => c.assignedTo === currentUserId);
+    return state.chores.filter((c) => c.assignedTo === currentUserId && isChoreScheduledToday(c));
   }, [state.chores, currentUserId]);
 
   // Incoming transfer requests for current user
@@ -259,6 +259,7 @@ export function App() {
 
     const updatedChores = currentState.chores.map((chore) => {
       if (chore.isCompletedToday || chore.isLatePenalized) return chore;
+      if (!isChoreScheduledToday(chore)) return chore; // Không phạt nếu hôm nay không phải ngày làm việc này
 
       const [dueH, dueM] = chore.dueTime.split(':').map(Number);
       const dueMinutes = dueH * 60 + dueM;
@@ -820,13 +821,18 @@ export function App() {
     const creatorName = currentMember?.name || 'Thành viên';
     const creatorId = currentMember?.id || currentUserId || 'm_unknown';
 
+    const isOnce = newChoreData.frequency === 'once';
+    const propTitle = isOnce
+      ? `⚡ Việc phát sinh (1 lần): ${newChoreData.title} (+${newChoreData.points}đ)`
+      : `Thêm việc: ${newChoreData.title} (+${newChoreData.points}đ)`;
+
     const newProposal: RoomProposal = {
       id: proposalId,
       type: 'add_chore',
       creatorId,
       creatorName,
-      title: `Thêm việc: ${newChoreData.title} (+${newChoreData.points}đ)`,
-      description: `${creatorName} đề xuất thêm việc này vào phòng. Cần quá bán thành viên đồng ý để phê duyệt.`,
+      title: propTitle,
+      description: `${creatorName} đề xuất thêm việc này vào phòng (${isOnce ? 'Làm 1 lần duy nhất' : 'Lặp lại định kỳ'}). Cần quá bán thành viên đồng ý để phê duyệt.`,
       createdAt: nowTimeStr,
       choreData: newChoreData,
       votes: {
@@ -837,8 +843,8 @@ export function App() {
 
     const newNotification: AppNotification = {
       id: 'notif_' + Date.now(),
-      title: '🗳️ Biểu quyết thêm việc mới',
-      message: `${creatorName} vừa đề xuất thêm việc "${newChoreData.title}" (+${newChoreData.points}đ). Hãy tham gia bỏ phiếu!`,
+      title: isOnce ? '⚡ Biểu quyết việc phát sinh 1 lần' : '🗳️ Biểu quyết thêm việc mới',
+      message: `${creatorName} vừa đề xuất ${isOnce ? 'việc phát sinh 1 lần' : 'thêm việc'} "${newChoreData.title}" (+${newChoreData.points}đ). Hãy tham gia bỏ phiếu!`,
       type: 'proposal_vote',
       createdAt: `Hôm nay ${nowTimeStr}`,
       readBy: [creatorId],

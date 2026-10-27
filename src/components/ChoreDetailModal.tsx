@@ -15,6 +15,7 @@ import {
   Undo2
 } from 'lucide-react';
 import { Chore, Member } from '../types';
+import { formatChoreDays } from '../utils/storage';
 
 interface ChoreDetailModalProps {
   isOpen: boolean;
@@ -78,7 +79,9 @@ export const ChoreDetailModal: React.FC<ChoreDetailModalProps> = ({
       case 'alternate':
         return 'Cách ngày';
       case 'weekly':
-        return 'Hàng tuần';
+        return `Hàng tuần (${formatChoreDays(chore.daysOfWeek, chore.frequency)})`;
+      case 'once':
+        return '⚡ 1 lần duy nhất (Việc phát sinh)';
       default:
         return 'Tùy chỉnh';
     }

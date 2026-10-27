@@ -1,5 +1,5 @@
 import { Chore, Member, NotificationSettings, AppNotification } from '../types';
-import { getNextAssignee, autoBalanceChores, getTodayDateString } from './storage';
+import { getNextAssignee, autoBalanceChores, getTodayDateString, isChoreScheduledToday } from './storage';
 
 export const NOTIFICATION_SETTINGS_KEY = 'app_nhac_viec_notification_settings';
 export const NOTIFIED_MILESTONES_KEY = 'app_nhac_viec_notified_milestones';
@@ -129,13 +129,32 @@ export const getTomorrowChoresForUser = (
 ): Chore[] => {
   if (!userId || members.length === 0) return [];
 
+  const tomorrowDay = (new Date().getDay() + 1) % 7;
+
   // If newcomer joined and rebalance is scheduled for tomorrow:
   if (rebalancePendingTomorrow) {
     const projected = autoBalanceChores(chores, members);
-    return projected.filter((c) => c.assignedTo === userId);
+    return projected.filter((c) => {
+      if (c.assignedTo !== userId) return false;
+      if (c.frequency === 'once') return !c.isCompletedToday;
+      if (c.daysOfWeek && c.daysOfWeek.length > 0 && !c.daysOfWeek.includes(tomorrowDay)) {
+        return false;
+      }
+      return true;
+    });
   }
 
   return chores.filter((chore) => {
+    // If it's a 1-time chore: if completed today, it won't exist tomorrow!
+    if (chore.frequency === 'once') {
+      return !chore.isCompletedToday && chore.assignedTo === userId;
+    }
+
+    // Check if tomorrow is in chore's scheduled days
+    if (chore.daysOfWeek && chore.daysOfWeek.length > 0 && !chore.daysOfWeek.includes(tomorrowDay)) {
+      return false;
+    }
+
     // If was transferred, tomorrow it returns to originalAssignee
     if (chore.originalAssignee) {
       return chore.originalAssignee === userId;
@@ -186,7 +205,7 @@ export const checkAndSendScheduledReminders = (
 
     if (currentMinutes >= targetMinutes) {
       const myPending = chores.filter(
-        (c) => c.assignedTo === currentUserId && !c.isCompletedToday
+        (c) => c.assignedTo === currentUserId && !c.isCompletedToday && isChoreScheduledToday(c)
       );
 
       if (myPending.length > 0) {
@@ -273,7 +292,7 @@ export const checkAndSendDeadlineAlerts = (
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
   const myPendingChores = chores.filter(
-    (c) => c.assignedTo === currentUserId && !c.isCompletedToday
+    (c) => c.assignedTo === currentUserId && !c.isCompletedToday && isChoreScheduledToday(c)
   );
 
   myPendingChores.forEach((chore) => {

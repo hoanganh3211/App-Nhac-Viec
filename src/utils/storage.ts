@@ -1,4 +1,4 @@
-import { AppState, Chore, Member, RotationRule } from '../types';
+import { AppState, Chore, Member, RotationRule, FrequencyType } from '../types';
 
 const STORAGE_KEY = 'app_nhac_viec_data_v1';
 
@@ -191,6 +191,41 @@ export const getNextAssignee = (
   return members[nextIndex].id;
 };
 
+export const DAYS_OF_WEEK = [
+  { day: 1, label: 'T2', full: 'Thứ 2' },
+  { day: 2, label: 'T3', full: 'Thứ 3' },
+  { day: 3, label: 'T4', full: 'Thứ 4' },
+  { day: 4, label: 'T5', full: 'Thứ 5' },
+  { day: 5, label: 'T6', full: 'Thứ 6' },
+  { day: 6, label: 'T7', full: 'Thứ 7' },
+  { day: 0, label: 'CN', full: 'Chủ Nhật' },
+];
+
+export const isChoreScheduledToday = (chore: Chore): boolean => {
+  if (chore.frequency === 'once') return true; // Việc 1 lần luôn hiển thị cho đến khi làm xong
+  if (chore.frequency === 'daily') return true;
+  if (!chore.daysOfWeek || chore.daysOfWeek.length === 0) return true;
+  const todayDay = new Date().getDay(); // 0 = CN, 1 = T2, ..., 6 = T7
+  return chore.daysOfWeek.includes(todayDay);
+};
+
+export const formatChoreDays = (days?: number[], frequency?: FrequencyType): string => {
+  if (frequency === 'once') return '⚡ 1 lần duy nhất';
+  if (!days || days.length === 0 || days.length === 7 || frequency === 'daily') {
+    return 'Hàng ngày';
+  }
+  const dayMap: Record<number, string> = {
+    1: 'T2',
+    2: 'T3',
+    3: 'T4',
+    4: 'T5',
+    5: 'T6',
+    6: 'T7',
+    0: 'CN',
+  };
+  return days.map((d) => dayMap[d] || d).join(', ');
+};
+
 // Rollover for new day
 export const handleDayRollover = (state: AppState): AppState => {
   const today = getTodayDateString();
@@ -198,8 +233,16 @@ export const handleDayRollover = (state: AppState): AppState => {
     return state;
   }
 
-  // 1. Reset các trạng thái hoàn thành / phạt của ngày cũ
-  const resetChores: Chore[] = state.chores.map((chore) => {
+  // 1. Lọc bỏ các việc phát sinh 1 lần (frequency === 'once') đã hoàn thành của ngày hôm trước
+  const activeChores = state.chores.filter((chore) => {
+    if (chore.frequency === 'once' && chore.isCompletedToday) {
+      return false; // Đã xong việc 1 lần -> kết thúc, lưu trong nhật ký
+    }
+    return true;
+  });
+
+  // 2. Reset các trạng thái hoàn thành / phạt của ngày cũ
+  const resetChores: Chore[] = activeChores.map((chore) => {
     // If this chore was transferred to someone else previously:
     // Trả lại cho người nhượng kèm điểm thưởng (điểm việc + 1)
     if (chore.originalAssignee) {
@@ -209,6 +252,18 @@ export const handleDayRollover = (state: AppState): AppState => {
         assignedTo: originalUser,
         originalAssignee: undefined,
         nextBonusPoints: chore.points + 1,
+        isCompletedToday: false,
+        isLatePenalized: false,
+        completedAt: undefined,
+        completedBy: undefined,
+        redoRequest: undefined,
+      };
+    }
+
+    // Nếu là việc 1 lần phát sinh (chưa làm xong): giữ nguyên người làm, không xoay vòng
+    if (chore.frequency === 'once') {
+      return {
+        ...chore,
         isCompletedToday: false,
         isLatePenalized: false,
         completedAt: undefined,
@@ -233,7 +288,7 @@ export const handleDayRollover = (state: AppState): AppState => {
     };
   });
 
-  // 2. Nếu có thành viên mới gia nhập từ hôm trước (rebalancePendingTomorrow = true):
+  // 3. Nếu có thành viên mới gia nhập từ hôm trước (rebalancePendingTomorrow = true):
   // Tự động phân chia lại công việc công bằng và đều đặn cho tất cả mọi người kể từ hôm nay!
   let finalChores = resetChores;
   if (state.rebalancePendingTomorrow) {
