@@ -12,6 +12,13 @@ export interface Member {
 export type FrequencyType = 'daily' | 'alternate' | 'weekly' | 'custom';
 export type RotationRule = 'round-robin' | 'least-points' | 'fixed';
 
+export interface RedoRequest {
+  requestedBy: string;
+  requestedByName: string;
+  reason: string;
+  requestedAt: string;
+}
+
 export interface Chore {
   id: string;
   title: string;
@@ -29,6 +36,7 @@ export interface Chore {
   originalAssignee?: string; // Người nhượng việc ban đầu (để hoàn trả ở chu kỳ kế tiếp)
   nextBonusPoints?: number; // Điểm thưởng khi người nhượng làm lại ở lượt sau: (điểm việc + 1)
   isLatePenalized?: boolean; // Đánh dấu đã trừ điểm trễ hôm nay
+  redoRequest?: RedoRequest; // Yêu cầu làm lại do làm chưa tốt / chưa sạch
 }
 
 export interface ChoreLog {
@@ -39,7 +47,7 @@ export interface ChoreLog {
   memberName: string;
   completedAt: string;
   pointsEarned: number; // Dương nếu cộng, Âm nếu bị trừ điểm trễ
-  type?: 'completed' | 'late_penalty' | 'transfer_fee' | 'transfer_reward' | 'recovery_bonus';
+  type?: 'completed' | 'late_penalty' | 'transfer_fee' | 'transfer_reward' | 'recovery_bonus' | 'redo_requested';
   note?: string;
 }
 

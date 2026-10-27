@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Scale, AlertTriangle, ArrowRightLeft, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, Scale, AlertTriangle, ArrowRightLeft, Sparkles, CheckCircle2, RotateCcw } from 'lucide-react';
 
 interface RulesModalProps {
   isOpen: boolean;
@@ -97,6 +97,25 @@ export const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose }) => {
               </li>
               <li>
                 <strong>Chia đều lại việc nhà:</strong> Toàn bộ công việc trong phòng được hệ thống <strong>tự động phân chia lại</strong> đồng đều giữa tất cả mọi người ngay khi có người mới.
+              </li>
+            </ul>
+          </div>
+
+          {/* Rule 5: Quality Check & Redo Requests */}
+          <div className="p-3 bg-violet-50/70 border border-violet-200/80 rounded-2xl space-y-1.5 text-violet-950">
+            <div className="font-bold flex items-center space-x-1.5 text-violet-900">
+              <RotateCcw className="w-4 h-4 text-violet-600" />
+              <span>5. Kiểm tra chất lượng & Yêu cầu làm lại</span>
+            </div>
+            <ul className="text-[11px] text-violet-950 pl-5 space-y-1 list-disc">
+              <li>
+                <strong>Chi tiết việc:</strong> Bấm vào bất kỳ thẻ việc nào để xem hướng dẫn chi tiết, giờ giấc và người phụ trách.
+              </li>
+              <li>
+                <strong>Hủy tích hoàn thành:</strong> Người làm có thể bấm <strong>Hủy tích</strong> để làm lại và tích lại nếu bấm nhầm hoặc muốn sửa.
+              </li>
+              <li>
+                <strong>Yêu cầu làm lại:</strong> Nếu bạn cùng phòng thấy việc làm chưa sạch / chưa đạt, có quyền bấm <strong>Yêu cầu làm lại</strong>. Việc sẽ chuyển về trạng thái Chưa xong và tạm thu hồi điểm cho đến khi được hoàn tất đạt yêu cầu!
               </li>
             </ul>
           </div>

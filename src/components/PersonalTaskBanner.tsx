@@ -13,6 +13,7 @@ interface PersonalTaskBannerProps {
   onOpenTransfer: (chore: Chore) => void;
   onAcceptTransfer: (requestId: string) => void;
   onDeclineTransfer: (requestId: string) => void;
+  onOpenDetail?: (chore: Chore) => void;
 }
 
 export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
@@ -26,6 +27,7 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
   onOpenTransfer,
   onAcceptTransfer,
   onDeclineTransfer,
+  onOpenDetail,
 }) => {
   if (!currentMember) {
     return (
@@ -160,7 +162,8 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
                   return (
                     <div
                       key={chore.id}
-                      className="p-2 bg-white/10 hover:bg-white/15 backdrop-blur-md rounded-xl flex items-center justify-between border border-white/10 transition gap-2"
+                      onClick={() => onOpenDetail?.(chore)}
+                      className="p-2 bg-white/10 hover:bg-white/15 backdrop-blur-md rounded-xl flex items-center justify-between border border-white/10 transition gap-2 cursor-pointer"
                     >
                       <div className="flex items-center space-x-2 min-w-0 flex-1">
                         <span className="text-lg shrink-0">{chore.icon}</span>
@@ -184,7 +187,7 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-1 shrink-0">
+                      <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                         {/* Nhượng việc button */}
                         <button
                           onClick={() => onOpenTransfer(chore)}

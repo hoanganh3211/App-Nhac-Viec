@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Circle, Clock, Flame, Send, ArrowRightLeft, Sparkles, Lock } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Flame, Send, ArrowRightLeft, Sparkles, Lock, RotateCcw, Undo2 } from 'lucide-react';
 import { Chore, Member } from '../types';
 
 interface ChoreCardProps {
@@ -9,6 +9,8 @@ interface ChoreCardProps {
   onToggleComplete: (choreId: string) => void;
   onNudge: (chore: Chore, assignee?: Member) => void;
   onOpenTransfer: (chore: Chore) => void;
+  onOpenDetail: (chore: Chore) => void;
+  onOpenRequestRedo: (chore: Chore) => void;
 }
 
 export const ChoreCard: React.FC<ChoreCardProps> = ({
@@ -18,6 +20,8 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
   onToggleComplete,
   onNudge,
   onOpenTransfer,
+  onOpenDetail,
+  onOpenRequestRedo,
 }) => {
   const assignee = members.find((m) => m.id === chore.assignedTo);
   const isMine = Boolean(currentUserId && chore.assignedTo === currentUserId);
@@ -36,12 +40,13 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border transition-all duration-200 ${
+      onClick={() => onOpenDetail(chore)}
+      className={`relative overflow-hidden rounded-2xl border transition-all duration-200 cursor-pointer ${
         chore.isCompletedToday
-          ? 'bg-emerald-50/70 border-emerald-200/80 text-slate-700 shadow-2xs'
+          ? 'bg-emerald-50/70 border-emerald-200/80 text-slate-700 shadow-2xs hover:border-emerald-300'
           : overdue
-          ? 'bg-rose-50/80 border-rose-200 shadow-xs'
-          : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-xs'
+          ? 'bg-rose-50/80 border-rose-200 shadow-xs hover:border-rose-300'
+          : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-indigo-200'
       }`}
     >
       <div className="p-3.5">
@@ -76,6 +81,14 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
               <p className="text-[11px] text-slate-500 truncate mt-0.5">
                 {chore.description}
               </p>
+            )}
+
+            {/* Redo request alert badge */}
+            {chore.redoRequest && !chore.isCompletedToday && (
+              <div className="mt-1 flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-950 text-[10px] font-semibold border border-amber-200">
+                <RotateCcw className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                <span className="truncate">Cần làm lại: "{chore.redoRequest.reason}" ({chore.redoRequest.requestedByName})</span>
+              </div>
             )}
 
             {/* Badges: Time, Points, Bonus */}
@@ -114,16 +127,16 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
           </div>
 
           {/* Right: Checkbox completion area */}
-          <div className="shrink-0">
+          <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
             {chore.isCompletedToday ? (
               // Nếu đã xong:
-              // - Nếu là chính chủ: có thể bấm bỏ tick nếu nhầm
+              // - Nếu là chính chủ: có thể bấm bỏ tick để làm lại
               // - Nếu là người khác: chỉ hiển thị icon tĩnh, KHÔNG bấm được
               isMine ? (
                 <button
                   onClick={() => onToggleComplete(chore.id)}
-                  className="p-1.5 rounded-2xl text-emerald-600 hover:text-emerald-700 transition transform active:scale-95"
-                  title="Bấm để đánh dấu chưa xong"
+                  className="p-1.5 rounded-2xl text-emerald-600 hover:text-rose-600 transition transform active:scale-95"
+                  title="Bấm để hủy tích & làm lại"
                 >
                   <CheckCircle2 className="w-7 h-7 fill-emerald-500 text-white" />
                 </button>
@@ -165,7 +178,7 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
               }`}>
                 <span className="text-xs shrink-0">{assignee.avatar}</span>
                 <span className="text-[11px] truncate">
-                  {assignee.name} {isMine && '(Việc của bạn)'}
+                  {assignee.name} {isMine && '(Bạn)'}
                 </span>
                 {assignee.streak > 1 && (
                   <span className="text-[9px] text-amber-600 font-bold shrink-0">
@@ -179,29 +192,63 @@ export const ChoreCard: React.FC<ChoreCardProps> = ({
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center space-x-1 shrink-0">
-            {/* Nhượng việc button (Chỉ chính chủ mới được nhượng) */}
-            {isMine && !chore.isCompletedToday && (
-              <button
-                onClick={() => onOpenTransfer(chore)}
-                title="Nhượng lại việc cho người khác (-điểm việc)"
-                className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-[11px] font-semibold transition border border-amber-200/60 shadow-2xs"
-              >
-                <ArrowRightLeft className="w-2.5 h-2.5" />
-                <span>Nhượng việc</span>
-              </button>
+          <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {/* Khi ĐÃ hoàn thành: */}
+            {chore.isCompletedToday && (
+              <>
+                {/* Chính chủ: Nút hủy tích để làm lại */}
+                {isMine && (
+                  <button
+                    onClick={() => onToggleComplete(chore.id)}
+                    title="Hủy đánh dấu hoàn thành để làm lại"
+                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/70 rounded-lg text-[10px] font-semibold transition"
+                  >
+                    <Undo2 className="w-2.5 h-2.5 text-rose-500" />
+                    <span>Hủy tích</span>
+                  </button>
+                )}
+
+                {/* Người khác: Nút yêu cầu làm lại nếu thấy làm ẩu / chưa sạch */}
+                {!isMine && (
+                  <button
+                    onClick={() => onOpenRequestRedo(chore)}
+                    title="Yêu cầu làm lại nếu việc làm chưa sạch / chưa đạt"
+                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-semibold transition"
+                  >
+                    <RotateCcw className="w-2.5 h-2.5 text-amber-600" />
+                    <span>Làm lại?</span>
+                  </button>
+                )}
+              </>
             )}
 
-            {/* Nhắc Zalo (Chỉ người khác mới cần nhắc người được giao) */}
-            {!chore.isCompletedToday && !isMine && (
-              <button
-                onClick={() => onNudge(chore, assignee)}
-                title="Nhắc người này qua Zalo"
-                className="inline-flex items-center space-x-1 px-2 py-0.5 text-blue-600 hover:bg-blue-50 rounded-lg text-[11px] font-semibold transition"
-              >
-                <Send className="w-2.5 h-2.5" />
-                <span className="whitespace-nowrap">Nhắc Zalo</span>
-              </button>
+            {/* Khi CHƯA hoàn thành: */}
+            {!chore.isCompletedToday && (
+              <>
+                {/* Nhượng việc button (Chỉ chính chủ mới được nhượng) */}
+                {isMine && (
+                  <button
+                    onClick={() => onOpenTransfer(chore)}
+                    title="Nhượng lại việc cho người khác (-điểm việc)"
+                    className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-[11px] font-semibold transition border border-amber-200/60 shadow-2xs"
+                  >
+                    <ArrowRightLeft className="w-2.5 h-2.5" />
+                    <span>Nhượng việc</span>
+                  </button>
+                )}
+
+                {/* Nhắc Zalo (Chỉ người khác mới cần nhắc người được giao) */}
+                {!isMine && (
+                  <button
+                    onClick={() => onNudge(chore, assignee)}
+                    title="Nhắc người này qua Zalo"
+                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-blue-600 hover:bg-blue-50 rounded-lg text-[11px] font-semibold transition"
+                  >
+                    <Send className="w-2.5 h-2.5" />
+                    <span className="whitespace-nowrap">Nhắc Zalo</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>

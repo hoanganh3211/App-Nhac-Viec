@@ -36,6 +36,8 @@ import { TransferChoreModal } from './components/TransferChoreModal';
 import { RoomModal } from './components/RoomModal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { ChoreRecommendationModal } from './components/ChoreRecommendationModal';
+import { ChoreDetailModal } from './components/ChoreDetailModal';
+import { RequestRedoModal } from './components/RequestRedoModal';
 import { shareToZalo } from './utils/zalo';
 
 const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
@@ -70,6 +72,8 @@ export function App() {
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [transferTargetChore, setTransferTargetChore] = useState<Chore | null>(null);
   const [isChoreRecOpen, setIsChoreRecOpen] = useState(false);
+  const [selectedChoreForDetail, setSelectedChoreForDetail] = useState<Chore | null>(null);
+  const [selectedChoreForRedo, setSelectedChoreForRedo] = useState<Chore | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -272,12 +276,12 @@ export function App() {
     }
   };
 
-  // Toggle chore completed
+  // Toggle chore completed (hoặc hủy tích để có thể hoàn thành lại)
   const handleToggleComplete = (choreId: string) => {
     const targetChore = state.chores.find((c) => c.id === choreId);
     if (!targetChore) return;
 
-    // Bảo mật vai trò: Chỉ chính chủ được giao việc mới có quyền tick hoàn thành
+    // Bảo mật vai trò: Chỉ chính chủ được giao việc mới có quyền tick hoàn thành hoặc hủy tick
     if (targetChore.assignedTo !== currentUserId) {
       showToast('⚠️ Bạn không thể tick việc của người khác! Chỉ người phụ trách mới được tick.');
       return;
@@ -301,6 +305,8 @@ export function App() {
         ? ` (Đã cộng thêm +1đ thưởng hoàn trả!)`
         : '';
       showToast(`🎉 +${earnedPoints} điểm cho ${assignee?.name || 'bạn'}!${bonusMsg}`);
+    } else {
+      showToast(`↩️ Đã hủy hoàn thành "${targetChore.title}". Số điểm (-${earnedPoints}đ) đã được trừ lại để bạn làm lại.`);
     }
 
     const updatedMembers = state.members.map((member) => {
@@ -309,7 +315,7 @@ export function App() {
           ...member,
           points: willBeCompleted
             ? member.points + earnedPoints
-            : member.points - earnedPoints,
+            : Math.max(0, member.points - earnedPoints),
           streak: willBeCompleted ? member.streak + 1 : Math.max(0, member.streak - 1),
           lateViolations: willBeCompleted
             ? Math.max(0, member.lateViolations - 1)
@@ -327,6 +333,8 @@ export function App() {
           completedAt: willBeCompleted ? nowTimeStr : undefined,
           completedBy: willBeCompleted ? chore.assignedTo : undefined,
           nextBonusPoints: willBeCompleted ? undefined : chore.nextBonusPoints,
+          // Khi hoàn thành lại, xóa yêu cầu làm lại trước đó
+          redoRequest: willBeCompleted ? undefined : chore.redoRequest,
         };
       }
       return chore;
@@ -348,6 +356,21 @@ export function App() {
         },
         ...state.logs,
       ];
+    } else {
+      updatedLogs = [
+        {
+          id: 'log_untick_' + Date.now(),
+          choreId: targetChore.id,
+          choreTitle: targetChore.title,
+          memberId: targetChore.assignedTo,
+          memberName: assignee?.name || 'Thành viên',
+          completedAt: `Hôm nay ${nowTimeStr}`,
+          pointsEarned: -earnedPoints,
+          type: 'redo_requested',
+          note: 'Hủy đánh dấu hoàn thành để làm lại',
+        },
+        ...state.logs,
+      ];
     }
 
     setState((prev) => ({
@@ -356,6 +379,95 @@ export function App() {
       chores: updatedChores,
       logs: updatedLogs,
     }));
+
+    // Cập nhật state modal chi tiết nếu đang mở việc này
+    if (selectedChoreForDetail?.id === choreId) {
+      setSelectedChoreForDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              isCompletedToday: willBeCompleted,
+              completedAt: willBeCompleted ? nowTimeStr : undefined,
+              completedBy: willBeCompleted ? prev.assignedTo : undefined,
+              redoRequest: willBeCompleted ? undefined : prev.redoRequest,
+            }
+          : null
+      );
+    }
+  };
+
+  // Người dùng khác yêu cầu làm lại công việc (do chưa sạch / làm chưa tốt)
+  const handleConfirmRedo = async (choreId: string, reason: string) => {
+    if (!currentMember) return;
+    const targetChore = state.chores.find((c) => c.id === choreId);
+    if (!targetChore) return;
+
+    const assignee = state.members.find((m) => m.id === targetChore.assignedTo);
+    if (!assignee) return;
+
+    const earnedPoints = targetChore.nextBonusPoints || targetChore.points;
+    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+    // Tạm thu hồi điểm đã cộng cho người làm
+    const updatedMembers = state.members.map((m) => {
+      if (m.id === assignee.id) {
+        return {
+          ...m,
+          points: Math.max(0, m.points - earnedPoints),
+          streak: Math.max(0, m.streak - 1),
+        };
+      }
+      return m;
+    });
+
+    const updatedChores = state.chores.map((c) => {
+      if (c.id === choreId) {
+        return {
+          ...c,
+          isCompletedToday: false,
+          completedAt: undefined,
+          completedBy: undefined,
+          redoRequest: {
+            requestedBy: currentMember.id,
+            requestedByName: currentMember.name,
+            reason,
+            requestedAt: nowTimeStr,
+          },
+        };
+      }
+      return c;
+    });
+
+    const redoLog: ChoreLog = {
+      id: 'log_redo_' + Date.now(),
+      choreId: targetChore.id,
+      choreTitle: targetChore.title,
+      memberId: assignee.id,
+      memberName: assignee.name,
+      completedAt: `Hôm nay ${nowTimeStr}`,
+      pointsEarned: -earnedPoints,
+      type: 'redo_requested',
+      note: `${currentMember.name} yêu cầu làm lại: "${reason}"`,
+    };
+
+    setState((prev) => ({
+      ...prev,
+      members: updatedMembers,
+      chores: updatedChores,
+      logs: [redoLog, ...prev.logs],
+    }));
+
+    setSelectedChoreForRedo(null);
+    if (selectedChoreForDetail?.id === choreId) {
+      setSelectedChoreForDetail(null);
+    }
+
+    showToast(`⚠️ Đã gửi yêu cầu làm lại "${targetChore.title}" tới ${assignee.name}!`);
+
+    // Chuẩn bị tin nhắn nhắc Zalo
+    const tag = `@${assignee.zaloName || assignee.name}`;
+    const text = `📢 [YÊU CẦU LÀM LẠI] Alo ${tag} ơi!\nBạn ${currentMember.name} vừa kiểm tra việc "${targetChore.title}" và thấy chưa đạt (${reason}).\nBạn làm lại sạch sẽ và tick lại để nhận lại điểm nhé! 🧹\n🔗 ${window.location.origin}?room=${encodeURIComponent(state.roomCode)}`;
+    await shareToZalo(text);
   };
 
   // Cơ chế nhượng việc
@@ -731,6 +843,7 @@ export function App() {
           onOpenTransfer={(chore) => setTransferTargetChore(chore)}
           onAcceptTransfer={handleAcceptTransfer}
           onDeclineTransfer={handleDeclineTransfer}
+          onOpenDetail={(chore) => setSelectedChoreForDetail(chore)}
         />
 
         {/* Date & Quick Progress */}
@@ -829,6 +942,8 @@ export function App() {
                 onToggleComplete={handleToggleComplete}
                 onNudge={handleNudge}
                 onOpenTransfer={(c) => setTransferTargetChore(c)}
+                onOpenDetail={(c) => setSelectedChoreForDetail(c)}
+                onOpenRequestRedo={(c) => setSelectedChoreForRedo(c)}
               />
             ))
           )}
@@ -960,6 +1075,29 @@ export function App() {
         roomName={state.roomName}
         onApplyChores={handleApplyRecommendedChores}
         onSkip={handleSkipRecommendedChores}
+      />
+
+      {/* Chore Detail Modal */}
+      <ChoreDetailModal
+        isOpen={Boolean(selectedChoreForDetail)}
+        onClose={() => setSelectedChoreForDetail(null)}
+        chore={selectedChoreForDetail}
+        members={state.members}
+        currentUserId={currentUserId}
+        onToggleComplete={handleToggleComplete}
+        onOpenTransfer={(chore) => setTransferTargetChore(chore)}
+        onNudge={handleNudge}
+        onOpenRequestRedo={(chore) => setSelectedChoreForRedo(chore)}
+      />
+
+      {/* Request Redo Modal */}
+      <RequestRedoModal
+        isOpen={Boolean(selectedChoreForRedo)}
+        onClose={() => setSelectedChoreForRedo(null)}
+        chore={selectedChoreForRedo}
+        currentMember={currentMember || null}
+        members={state.members}
+        onConfirmRedo={handleConfirmRedo}
       />
     </div>
   );
