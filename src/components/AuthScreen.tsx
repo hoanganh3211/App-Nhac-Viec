@@ -17,6 +17,10 @@ import {
   registerAccount, 
   AVATAR_OPTIONS 
 } from '../utils/auth';
+import { 
+  getSupabaseConfig, 
+  saveSupabaseConfig 
+} from '../utils/supabase';
 
 interface AuthScreenProps {
   onAuthSuccess: (user: UserAccount) => void;
@@ -45,22 +49,34 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  // Cloud Config Modal state
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const currentCfg = getSupabaseConfig();
+  const [cfgUrl, setCfgUrl] = useState(currentCfg?.url || '');
+  const [cfgAnonKey, setCfgAnonKey] = useState(currentCfg?.anonKey || '');
+  const [configSuccess, setConfigSuccess] = useState(false);
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    const res = loginAccount(loginUsername, loginPin);
-    setIsLoading(false);
+    try {
+      const res = await loginAccount(loginUsername, loginPin);
+      setIsLoading(false);
 
-    if (res.success && res.user) {
-      onAuthSuccess(res.user);
-    } else {
-      setError(res.error || 'Đăng nhập không thành công.');
+      if (res.success && res.user) {
+        onAuthSuccess(res.user);
+      } else {
+        setError(res.error || 'Đăng nhập không thành công.');
+      }
+    } catch {
+      setIsLoading(false);
+      setError('Lỗi kết nối cơ sở dữ liệu đám mây. Vui lòng kiểm tra lại mạng hoặc cấu hình!');
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -70,14 +86,30 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
 
     setIsLoading(true);
-    const res = registerAccount(regUsername, regPin, selectedAvatar);
-    setIsLoading(false);
+    try {
+      const res = await registerAccount(regUsername, regPin, selectedAvatar);
+      setIsLoading(false);
 
-    if (res.success && res.user) {
-      onAuthSuccess(res.user);
-    } else {
-      setError(res.error || 'Đăng ký tài khoản không thành công.');
+      if (res.success && res.user) {
+        onAuthSuccess(res.user);
+      } else {
+        setError(res.error || 'Đăng ký tài khoản không thành công.');
+      }
+    } catch {
+      setIsLoading(false);
+      setError('Lỗi kết nối cơ sở dữ liệu đám mây. Vui lòng kiểm tra lại mạng hoặc cấu hình!');
     }
+  };
+
+  const handleSaveConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cfgUrl.trim() || !cfgAnonKey.trim()) return;
+    saveSupabaseConfig(cfgUrl.trim(), cfgAnonKey.trim());
+    setConfigSuccess(true);
+    setTimeout(() => {
+      setConfigSuccess(false);
+      setIsConfigOpen(false);
+    }, 1500);
   };
 
   return (
@@ -377,14 +409,95 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         )}
       </div>
 
-      {/* Footer Info */}
-      <div className="text-center text-[11px] text-slate-400 space-y-1 pb-2">
+      {/* Footer Info & Cloud DB Status */}
+      <div className="text-center text-[11px] text-slate-400 space-y-1.5 pb-2">
         <div className="flex items-center justify-center space-x-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Bảo mật danh tính & kiểm soát quyền làm việc theo từng tài khoản</span>
+          <span>Bảo mật danh tính & đồng bộ tài khoản Realtime</span>
         </div>
+
+        <div>
+          <button
+            type="button"
+            onClick={() => setIsConfigOpen(true)}
+            className="text-[10px] text-indigo-600 hover:text-indigo-800 underline inline-flex items-center space-x-1 cursor-pointer bg-indigo-50/80 px-2.5 py-1 rounded-full border border-indigo-100"
+          >
+            <span>{currentCfg?.url ? '☁️ Đã kết nối Cloud Supabase (Bấm để xem/đổi)' : '⚙️ Cấu hình kết nối Cloud Supabase (Để đồng bộ điện thoại & Web)'}</span>
+          </button>
+        </div>
+
         <p>© 2026 ViệcNhà • Độc lập & Công bằng</p>
       </div>
+
+      {/* Cloud Config Modal */}
+      {isConfigOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800 text-sm">Cấu Hình Cloud Database (Supabase)</h3>
+              <button 
+                type="button"
+                onClick={() => setIsConfigOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Cấu hình Supabase giúp đồng bộ tài khoản giữa <strong>điện thoại</strong> và <strong>máy tính web</strong> để bạn có thể đăng nhập ở bất cứ thiết bị nào.
+            </p>
+
+            <form onSubmit={handleSaveConfig} className="space-y-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Project URL:</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="https://xyz.supabase.co"
+                  value={cfgUrl}
+                  onChange={(e) => setCfgUrl(e.target.value)}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Anon Public Key:</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="eyJhbGciOi..."
+                  value={cfgAnonKey}
+                  onChange={(e) => setCfgAnonKey(e.target.value)}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
+                />
+              </div>
+
+              {configSuccess && (
+                <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-[11px] text-center font-medium animate-in fade-in">
+                  ✓ Đã lưu cấu hình Cloud thành công!
+                </div>
+              )}
+
+              <div className="flex space-x-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsConfigOpen(false)}
+                  className="flex-1 py-2 text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 text-xs text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold shadow-xs cursor-pointer"
+                >
+                  Lưu Cấu Hình
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

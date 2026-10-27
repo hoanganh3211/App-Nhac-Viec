@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { AppState } from '../types';
+import { AppState, UserAccount } from '../types';
 
 const SUPABASE_CONFIG_KEY = 'app_nhac_viec_supabase_cfg';
 
@@ -96,5 +96,92 @@ export const fetchStateFromCloud = async (roomCode: string): Promise<AppState | 
   } catch (err) {
     console.error('Failed to fetch from Supabase', err);
     return null;
+  }
+};
+
+export const GLOBAL_USERS_ROOM_CODE = '__GLOBAL_APP_USERS__';
+
+// Fetch all registered users from Supabase Cloud
+export const fetchUsersFromCloud = async (): Promise<UserAccount[]> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('room_states')
+      .select('state_data')
+      .eq('room_code', GLOBAL_USERS_ROOM_CODE)
+      .maybeSingle();
+
+    if (!error && data?.state_data) {
+      const stateData = data.state_data as any;
+      if (stateData && Array.isArray(stateData.users)) {
+        return stateData.users as UserAccount[];
+      }
+    }
+
+    // Fallback: Nếu row __GLOBAL_APP_USERS__ chưa có, tự động quét các phòng trong room_states để nhập các thành viên cũ
+    const { data: allRooms } = await supabase
+      .from('room_states')
+      .select('state_data')
+      .neq('room_code', GLOBAL_USERS_ROOM_CODE)
+      .limit(30);
+
+    if (allRooms && allRooms.length > 0) {
+      const discoveredUsers: UserAccount[] = [];
+      const seenUsernames = new Set<string>();
+
+      for (const row of allRooms) {
+        const room = row.state_data as any;
+        if (room && Array.isArray(room.members)) {
+          for (const m of room.members) {
+            const lowerName = m.name?.trim().toLowerCase();
+            if (lowerName && !seenUsernames.has(lowerName)) {
+              seenUsernames.add(lowerName);
+              discoveredUsers.push({
+                id: m.id || 'usr_' + Date.now(),
+                username: m.name.trim(),
+                passwordPin: '123456', // PIN dự phòng cho các thành viên cũ
+                avatar: m.avatar || '👤',
+                color: m.color || 'from-indigo-500 to-indigo-600',
+                createdAt: new Date().toISOString(),
+              });
+            }
+          }
+        }
+      }
+      return discoveredUsers;
+    }
+
+    return [];
+  } catch (err) {
+    console.error('Failed to fetch users from Supabase', err);
+    return [];
+  }
+};
+
+// Push all registered users to Supabase Cloud
+export const pushUsersToCloud = async (users: UserAccount[]): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+
+  try {
+    const { error } = await supabase.from('room_states').upsert(
+      {
+        room_code: GLOBAL_USERS_ROOM_CODE,
+        state_data: { users, updatedAt: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'room_code' }
+    );
+
+    if (error) {
+      console.error('Failed to push users to Supabase', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to push users to Supabase', err);
+    return false;
   }
 };

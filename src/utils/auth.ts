@@ -1,4 +1,5 @@
 import { UserAccount } from '../types';
+import { fetchUsersFromCloud, pushUsersToCloud } from './supabase';
 
 const USERS_DB_KEY = 'app_nhac_viec_users_db';
 const CURRENT_AUTH_USER_KEY = 'app_nhac_viec_current_auth_user';
@@ -60,11 +61,11 @@ export const setCurrentAuthUser = (user: UserAccount | null): void => {
   }
 };
 
-export const registerAccount = (
+export const registerAccount = async (
   username: string,
   pin: string,
   avatar?: string
-): { success: boolean; user?: UserAccount; error?: string } => {
+): Promise<{ success: boolean; user?: UserAccount; error?: string }> => {
   const cleanUsername = username.trim();
   const cleanPin = pin.trim();
 
@@ -84,15 +85,35 @@ export const registerAccount = (
     return { success: false, error: 'Mật khẩu phải gồm chính xác 6 chữ số (Ví dụ: 123456)!' };
   }
 
-  const users = getUsersDb();
-  const duplicate = users.find(
+  // 1. Kiểm tra trong Database đám mây (Supabase) trước để chống trùng lặp tài khoản giữa các máy
+  let cloudUsers: UserAccount[] = [];
+  try {
+    cloudUsers = await fetchUsersFromCloud();
+  } catch (e) {
+    console.warn('Could not fetch cloud users during registration:', e);
+  }
+
+  const localUsers = getUsersDb();
+
+  // Hợp nhất dữ liệu người dùng từ Cloud và Local
+  const userMap = new Map<string, UserAccount>();
+  for (const u of localUsers) {
+    userMap.set(u.username.toLowerCase(), u);
+  }
+  for (const u of cloudUsers) {
+    userMap.set(u.username.toLowerCase(), u);
+  }
+  const allUsers = Array.from(userMap.values());
+
+  // 2. Kiểm tra xem tên đăng nhập đã tồn tại trong database chưa
+  const duplicate = allUsers.find(
     (u) => u.username.toLowerCase() === cleanUsername.toLowerCase()
   );
 
   if (duplicate) {
     return {
       success: false,
-      error: `Tên đăng nhập "${cleanUsername}" đã được sử dụng. Vui lòng chọn tên khác hoặc chuyển sang Đăng nhập!`,
+      error: `Tên đăng nhập "${cleanUsername}" đã tồn tại trong hệ thống! Vui lòng chọn tên khác hoặc chuyển sang tab Đăng nhập.`,
     };
   }
 
@@ -108,17 +129,26 @@ export const registerAccount = (
     createdAt: new Date().toISOString(),
   };
 
-  const updatedUsers = [...users, newUser];
+  const updatedUsers = [...allUsers, newUser];
+
+  // Lưu vào bộ nhớ cục bộ trên máy
   saveUsersDb(updatedUsers);
   setCurrentAuthUser(newUser);
+
+  // Đẩy và đồng bộ tức thì lên Cloud Database (Supabase)
+  try {
+    await pushUsersToCloud(updatedUsers);
+  } catch (err) {
+    console.error('Failed to sync new user to cloud database:', err);
+  }
 
   return { success: true, user: newUser };
 };
 
-export const loginAccount = (
+export const loginAccount = async (
   username: string,
   pin: string
-): { success: boolean; user?: UserAccount; error?: string } => {
+): Promise<{ success: boolean; user?: UserAccount; error?: string }> => {
   const cleanUsername = username.trim();
   const cleanPin = pin.trim();
 
@@ -133,22 +163,48 @@ export const loginAccount = (
     return { success: false, error: 'Mật khẩu phải gồm chính xác 6 chữ số!' };
   }
 
-  const users = getUsersDb();
-  const user = users.find(
+  // 1. Kéo danh sách tài khoản mới nhất từ Cloud Database (Supabase)
+  let cloudUsers: UserAccount[] = [];
+  try {
+    cloudUsers = await fetchUsersFromCloud();
+  } catch (e) {
+    console.warn('Could not fetch cloud users during login:', e);
+  }
+
+  const localUsers = getUsersDb();
+
+  // Hợp nhất dữ liệu giữa Cloud và Local
+  const userMap = new Map<string, UserAccount>();
+  for (const u of localUsers) {
+    userMap.set(u.username.toLowerCase(), u);
+  }
+  for (const u of cloudUsers) {
+    userMap.set(u.username.toLowerCase(), u);
+  }
+  const allUsers = Array.from(userMap.values());
+
+  // Lưu lại danh sách mới nhất về máy này để lần sau truy cập nhanh
+  if (cloudUsers.length > 0) {
+    saveUsersDb(allUsers);
+  }
+
+  // 2. Tìm tài khoản theo tên đăng nhập
+  const user = allUsers.find(
     (u) => u.username.toLowerCase() === cleanUsername.toLowerCase()
   );
 
   if (!user) {
     return {
       success: false,
-      error: `Tài khoản "${cleanUsername}" chưa tồn tại. Vui lòng kiểm tra lại hoặc chuyển sang tab Đăng ký!`,
+      error: `Tài khoản "${cleanUsername}" chưa tồn tại trong cơ sở dữ liệu. Vui lòng kiểm tra lại chính xác tên hoặc chuyển sang tab Đăng ký!`,
     };
   }
 
+  // 3. Kiểm tra mã PIN 6 số
   if (user.passwordPin !== cleanPin) {
     return {
       success: false,
-      error: 'Mật khẩu 6 số không chính xác. Vui lòng thử lại!',
+      error: 'Mật khẩu 6 số không chính xác. Vui lòng kiểm tra và nhập lại!',
     };
   }
 
@@ -160,7 +216,7 @@ export const logoutAccount = (): void => {
   setCurrentAuthUser(null);
 };
 
-export const updateUserRoom = (userId: string, roomCode: string): void => {
+export const updateUserRoom = async (userId: string, roomCode: string): Promise<void> => {
   const users = getUsersDb();
   const updated = users.map((u) =>
     u.id === userId ? { ...u, lastRoomCode: roomCode } : u
@@ -171,6 +227,10 @@ export const updateUserRoom = (userId: string, roomCode: string): void => {
   if (current && current.id === userId) {
     setCurrentAuthUser({ ...current, lastRoomCode: roomCode });
   }
+
+  try {
+    await pushUsersToCloud(updated);
+  } catch {}
 };
 
 export const getPendingRoomInvite = (): string | null => {
