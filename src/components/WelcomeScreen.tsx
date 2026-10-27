@@ -6,16 +6,22 @@ import {
   Link as LinkIcon, 
   AlertCircle,
   Scale,
-  ShieldCheck
+  ShieldCheck,
+  LogOut
 } from 'lucide-react';
+import { UserAccount } from '../types';
 
 interface WelcomeScreenProps {
+  currentUser?: UserAccount | null;
+  onLogout?: () => void;
   onJoinByCode: (roomCode: string) => Promise<boolean>;
   onJoinByLink: (linkOrCode: string) => Promise<boolean>;
   onCreateRoom: (roomName: string, creatorName: string) => Promise<string>;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
+  currentUser,
+  onLogout,
   onJoinByCode,
   onJoinByLink,
   onCreateRoom,
@@ -77,12 +83,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!roomNameInput.trim() || !creatorNameInput.trim()) return;
+    const finalCreatorName = currentUser?.username || creatorNameInput.trim();
+    if (!roomNameInput.trim() || !finalCreatorName) return;
 
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      await onCreateRoom(roomNameInput.trim(), creatorNameInput.trim());
+      await onCreateRoom(roomNameInput.trim(), finalCreatorName);
       setIsLoading(false);
     } catch {
       setIsLoading(false);
@@ -98,6 +105,28 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         paddingBottom: 'max(env(safe-area-inset-bottom), 1.5rem)',
       }}
     >
+      {/* Current Logged-in User Bar */}
+      {currentUser && (
+        <div className="flex items-center justify-between p-2.5 bg-white border border-slate-200/90 rounded-2xl shadow-2xs mb-2">
+          <div className="flex items-center space-x-2 min-w-0">
+            <span className="text-xl">{currentUser.avatar || '👤'}</span>
+            <div className="min-w-0">
+              <div className="text-[10px] text-slate-400 font-semibold uppercase">Đang đăng nhập:</div>
+              <div className="text-xs font-bold text-slate-800 truncate">{currentUser.username}</div>
+            </div>
+          </div>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="px-2.5 py-1 text-xs text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-xl font-semibold flex items-center space-x-1 cursor-pointer transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Đăng xuất</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Top Branding Section */}
       <div className="pt-4 text-center space-y-3">
         {/* App Logo */}
@@ -255,19 +284,34 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Tên của bạn:
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Ví dụ: Hoàng Anh"
-                value={creatorNameInput}
-                onChange={(e) => setCreatorNameInput(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
+            {currentUser ? (
+              <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xl">{currentUser.avatar || '👤'}</span>
+                  <div>
+                    <div className="text-[10px] text-indigo-700 font-semibold uppercase">Người tạo phòng:</div>
+                    <div className="text-xs font-bold text-slate-800">{currentUser.username}</div>
+                  </div>
+                </div>
+                <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+                  Tài khoản của bạn
+                </span>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Tên của bạn:
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Hoàng Anh"
+                  value={creatorNameInput}
+                  onChange={(e) => setCreatorNameInput(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            )}
 
             <div className="p-2.5 bg-indigo-50 rounded-2xl text-[11px] text-indigo-900 border border-indigo-100">
               ✨ Sau khi tạo, hệ thống sẽ sinh <strong>Mã phòng riêng</strong> và link mời để bạn gửi vào nhóm Zalo cho các bạn cùng phòng.
@@ -275,7 +319,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
             <button
               type="submit"
-              disabled={isLoading || !roomNameInput.trim() || !creatorNameInput.trim()}
+              disabled={isLoading || !roomNameInput.trim() || (!currentUser && !creatorNameInput.trim())}
               className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-md shadow-indigo-100 transition flex items-center justify-center space-x-1.5 text-xs"
             >
               <Plus className="w-4 h-4" />

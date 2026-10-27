@@ -31,11 +31,19 @@ import { ZaloReminderModal } from './components/ZaloReminderModal';
 import { HistoryModal } from './components/HistoryModal';
 import { RulesModal } from './components/RulesModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
-import { UserSelectModal } from './components/UserSelectModal';
 import { MenuDrawer } from './components/MenuDrawer';
 import { TransferChoreModal } from './components/TransferChoreModal';
 import { RoomModal } from './components/RoomModal';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { AuthScreen } from './components/AuthScreen';
+import { 
+  getCurrentAuthUser, 
+  logoutAccount, 
+  updateUserRoom, 
+  getPendingRoomInvite, 
+  setPendingRoomInvite 
+} from './utils/auth';
+import { UserAccount } from './types';
 import { ChoreRecommendationModal } from './components/ChoreRecommendationModal';
 import { ChoreDetailModal } from './components/ChoreDetailModal';
 import { RequestRedoModal } from './components/RequestRedoModal';
@@ -46,25 +54,35 @@ import { ChoreManagerModal } from './components/ChoreManagerModal';
 import { ChoreScheduleModal } from './components/ChoreScheduleModal';
 import { shareToZalo } from './utils/zalo';
 
-const CURRENT_USER_KEY = 'app_nhac_viec_current_user_id';
 const HAS_ROOM_KEY = 'app_nhac_viec_has_active_room';
 
 export function App() {
-  const [hasActiveRoom, setHasActiveRoom] = useState<boolean>(() => {
+  // 1. Authenticated User State
+  const [authUser, setAuthUser] = useState<UserAccount | null>(() => getCurrentAuthUser());
+
+  // 2. Pending room code from URL query (?room=XYZ) or saved invite
+  const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('room')) return true;
+    const roomParam = params.get('room');
+    if (roomParam) return roomParam.trim().toUpperCase();
+    return getPendingRoomInvite();
+  });
+
+  const [hasActiveRoom, setHasActiveRoom] = useState<boolean>(() => {
     return Boolean(localStorage.getItem(HAS_ROOM_KEY));
   });
 
   const [state, setState] = useState<AppState>(loadState);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
-    return localStorage.getItem(CURRENT_USER_KEY);
-  });
 
-  // Current logged in member
+  // Authenticated Member in the room (matched by ID or username)
   const currentMember = useMemo(() => {
-    return state.members.find((m) => m.id === currentUserId);
-  }, [state.members, currentUserId]);
+    if (!authUser) return undefined;
+    return state.members.find(
+      (m) => m.id === authUser.id || m.name.toLowerCase() === authUser.username.toLowerCase()
+    );
+  }, [state.members, authUser]);
+
+  const currentUserId = currentMember?.id || authUser?.id || null;
 
   // Anti-loop and anti-flicker refs
   const stateRef = useRef(state);
@@ -87,7 +105,6 @@ export function App() {
 
   // Modals
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isUserSelectOpen, setIsUserSelectOpen] = useState(false);
   const [isAddChoreOpen, setIsAddChoreOpen] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isZaloOpen, setIsZaloOpen] = useState(false);
@@ -121,38 +138,29 @@ export function App() {
     }, 3500);
   };
 
-  // Check URL query for room code (?room=xyz) on mount (Mở bằng link mời)
+  // Đảm bảo tài khoản đã đăng nhập luôn tự động có trong danh sách thành viên phòng
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const roomParam = params.get('room');
-    if (roomParam && roomParam !== state.roomCode) {
-      const cleanParam = roomParam.trim().toUpperCase();
-      fetchStateFromCloud(cleanParam).then((cloudState) => {
-        if (cloudState) {
-          setState(cloudState);
-          setHasActiveRoom(true);
-          localStorage.setItem(HAS_ROOM_KEY, 'true');
-
-          const userInRoom = cloudState.members.some((m) => m.id === currentUserId);
-          if (!userInRoom) {
-            setCurrentUserId(null);
-            localStorage.removeItem(CURRENT_USER_KEY);
-            setIsUserSelectOpen(true);
-          }
-          showToast(`Đã vào phòng "${cloudState.roomName}"! Hãy chọn bạn là ai.`);
-        } else {
-          showToast(`⚠️ Không tìm thấy phòng với mã "${cleanParam}".`);
-        }
-      });
+    if (hasActiveRoom && authUser && state.members.length > 0 && !currentMember) {
+      const avgPoints = Math.max(
+        0,
+        Math.round(state.members.reduce((sum, m) => sum + m.points, 0) / state.members.length)
+      );
+      const newMember: Member = {
+        id: authUser.id,
+        name: authUser.username,
+        avatar: authUser.avatar || '🙋‍♂️',
+        color: authUser.color || 'bg-indigo-600 text-white',
+        points: avgPoints,
+        streak: 0,
+        lateViolations: 0,
+        zaloName: authUser.username,
+      };
+      setState((prev) => ({
+        ...prev,
+        members: [...prev.members, newMember],
+      }));
     }
-  }, []);
-
-  // Show user selection modal on first launch if room active but no identity picked
-  useEffect(() => {
-    if (hasActiveRoom && !currentUserId && state.members.length > 0) {
-      setIsUserSelectOpen(true);
-    }
-  }, [hasActiveRoom, currentUserId]);
+  }, [hasActiveRoom, authUser, currentMember, state.members]);
 
   // Persist state to localStorage and push silently to Cloud (có cơ chế chống lặp vô hạn)
   useEffect(() => {
@@ -334,13 +342,6 @@ export function App() {
     const interval = setInterval(runPeriodicTasks, 60000);
     return () => clearInterval(interval);
   }, [hasActiveRoom, runPeriodicTasks]);
-
-  const handleSelectUser = (id: string) => {
-    setCurrentUserId(id);
-    localStorage.setItem(CURRENT_USER_KEY, id);
-    const member = state.members.find((m) => m.id === id);
-    showToast(`Đã chọn bạn là: ${member?.name || 'Thành viên'}`);
-  };
 
   const handleRequestNotification = async () => {
     const granted = await requestNotificationPermission();
@@ -699,43 +700,100 @@ export function App() {
     showToast(`Đã từ chối nhận việc "${req?.choreTitle}".`);
   };
 
-  // Tham gia phòng bằng mã phòng
-  const handleJoinRoom = async (roomCode: string): Promise<boolean> => {
+  // Tham gia phòng bằng mã phòng (tự động gắn tài khoản đang đăng nhập vào phòng)
+  const handleJoinRoom = async (roomCode: string, userOverride?: UserAccount): Promise<boolean> => {
     const cleanCode = roomCode.trim().toUpperCase();
-    const cloudState = await fetchStateFromCloud(cleanCode);
-    if (cloudState) {
-      setState(cloudState);
-      setHasActiveRoom(true);
-      localStorage.setItem(HAS_ROOM_KEY, 'true');
+    if (!cleanCode) return false;
 
-      const userInRoom = cloudState.members.some((m) => m.id === currentUserId);
-      if (!userInRoom) {
-        setCurrentUserId(null);
-        localStorage.removeItem(CURRENT_USER_KEY);
-        setIsUserSelectOpen(true);
-      }
-      showToast(`Đã tham gia phòng "${cloudState.roomName}"!`);
-      return true;
+    const cloudState = await fetchStateFromCloud(cleanCode);
+    const targetState = cloudState || (state.roomCode === cleanCode ? state : null);
+
+    if (!targetState) {
+      return false;
     }
-    return false;
+
+    const activeUser = userOverride || authUser;
+    let updatedMembers = [...targetState.members];
+
+    if (activeUser) {
+      const existingMember = updatedMembers.find(
+        (m) => m.id === activeUser.id || m.name.toLowerCase() === activeUser.username.toLowerCase()
+      );
+
+      if (!existingMember) {
+        const avgPoints = updatedMembers.length > 0
+          ? Math.max(0, Math.round(updatedMembers.reduce((sum, m) => sum + m.points, 0) / updatedMembers.length))
+          : 0;
+
+        const newMember: Member = {
+          id: activeUser.id,
+          name: activeUser.username,
+          avatar: activeUser.avatar || '🙋‍♂️',
+          color: activeUser.color || 'bg-indigo-600 text-white',
+          points: avgPoints,
+          streak: 0,
+          lateViolations: 0,
+          zaloName: activeUser.username,
+        };
+        updatedMembers.push(newMember);
+
+        const joinLog: ChoreLog = {
+          id: 'log_join_' + Date.now(),
+          choreId: 'join',
+          choreTitle: 'Gia nhập phòng',
+          memberId: newMember.id,
+          memberName: newMember.name,
+          completedAt: `Hôm nay ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
+          pointsEarned: avgPoints,
+          type: 'completed',
+          dateStr: getTodayDateString(),
+          note: avgPoints > 0
+            ? `Cấp ${avgPoints}đ khởi đầu (TB phòng). Việc nhà sẽ chia đều cho ${newMember.name} từ ngày mai`
+            : `Gia nhập phòng. Việc nhà sẽ chia đều cho ${newMember.name} từ ngày mai`,
+        };
+        targetState.logs = [joinLog, ...(targetState.logs || [])];
+        targetState.rebalancePendingTomorrow = true;
+      }
+
+      updateUserRoom(activeUser.id, cleanCode);
+    }
+
+    const finalState: AppState = {
+      ...targetState,
+      members: updatedMembers,
+    };
+
+    setState(finalState);
+    setHasActiveRoom(true);
+    localStorage.setItem(HAS_ROOM_KEY, 'true');
+
+    // Silent push updated room with new member to Supabase
+    pushStateToCloud(finalState);
+
+    showToast(`🎉 Chào mừng ${activeUser?.username || ''} đã vào phòng "${finalState.roomName}"!`);
+    return true;
   };
 
-  // Tạo phòng mới
+  // Tạo phòng mới (tự động lấy người tạo là tài khoản đang đăng nhập)
   const handleCreateRoom = async (roomName: string, creatorName: string): Promise<string> => {
     const newCode = `P-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const creatorId = 'm_' + Date.now();
+    const activeUser = authUser;
+    const authorName = activeUser?.username || creatorName.trim();
+    const creatorId = activeUser?.id || 'usr_' + Date.now();
+    const creatorAvatar = activeUser?.avatar || '👑';
+    const creatorColor = activeUser?.color || 'bg-indigo-600 text-white';
+
     const creatorMember: Member = {
       id: creatorId,
-      name: creatorName,
-      avatar: '👑',
-      color: 'bg-indigo-600 text-white',
+      name: authorName,
+      avatar: creatorAvatar,
+      color: creatorColor,
       points: 0,
       streak: 0,
       lateViolations: 0,
-      zaloName: creatorName,
+      zaloName: authorName,
     };
 
-    // Khởi tạo phòng mới với danh sách việc trống
     const newRoomState: AppState = {
       roomName,
       roomCode: newCode,
@@ -744,20 +802,66 @@ export function App() {
       chores: [],
       logs: [],
       transferRequests: [],
+      proposals: [],
+      notifications: [],
     };
 
     setState(newRoomState);
-    setCurrentUserId(creatorId);
-    localStorage.setItem(CURRENT_USER_KEY, creatorId);
     setHasActiveRoom(true);
     localStorage.setItem(HAS_ROOM_KEY, 'true');
+    if (activeUser) {
+      updateUserRoom(activeUser.id, newCode);
+    }
 
     await pushStateToCloud(newRoomState);
-    
+
     // Mở popup gợi ý công việc cho người dùng tuỳ chọn
     setIsChoreRecOpen(true);
-    showToast(`Đã tạo phòng "${roomName}"! Hãy chọn các việc mẫu cho phòng.`);
+    showToast(`🎉 Đã tạo phòng "${roomName}"! Hãy chọn các việc mẫu cho phòng.`);
     return newCode;
+  };
+
+  // Đăng nhập / Đăng ký thành công từ AuthScreen
+  const handleAuthSuccess = async (user: UserAccount) => {
+    setAuthUser(user);
+    const targetCode = pendingRoomCode || getPendingRoomInvite() || user.lastRoomCode;
+
+    if (targetCode) {
+      const success = await handleJoinRoom(targetCode, user);
+      if (success) {
+        setPendingRoomCode(null);
+        setPendingRoomInvite(null);
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('room');
+          window.history.replaceState({}, document.title, url.toString());
+        } catch {}
+        return;
+      }
+    }
+
+    const userInCurrentState = state.members.some(
+      (m) => m.id === user.id || m.name.toLowerCase() === user.username.toLowerCase()
+    );
+
+    if (userInCurrentState && state.roomCode) {
+      setHasActiveRoom(true);
+      localStorage.setItem(HAS_ROOM_KEY, 'true');
+      showToast(`Chào mừng ${user.username} trở lại phòng "${state.roomName}"!`);
+    } else {
+      setHasActiveRoom(false);
+      localStorage.removeItem(HAS_ROOM_KEY);
+      showToast(`Xin chào ${user.username}! Hãy tạo hoặc tham gia một phòng.`);
+    }
+  };
+
+  // Đăng xuất tài khoản
+  const handleLogout = () => {
+    logoutAccount();
+    setAuthUser(null);
+    setHasActiveRoom(false);
+    localStorage.removeItem(HAS_ROOM_KEY);
+    showToast('Đã đăng xuất tài khoản thành công.');
   };
 
   // Áp dụng các việc được gợi ý khi tạo phòng
@@ -1241,7 +1345,6 @@ export function App() {
       logs: [joinLog, ...prev.logs],
     }));
 
-    handleSelectUser(newMember.id);
     showToast(
       avgPoints > 0
         ? `🎉 Đã thêm ${name} (Khởi điểm: ${avgPoints}đ)! Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai.`
@@ -1268,8 +1371,8 @@ export function App() {
       rebalancePendingTomorrow: true,
     }));
     if (currentUserId === id) {
-      setCurrentUserId(null);
-      localStorage.removeItem(CURRENT_USER_KEY);
+      setHasActiveRoom(false);
+      localStorage.removeItem(HAS_ROOM_KEY);
     }
     showToast('Đã xóa thành viên. Lịch việc nhà sẽ được cân bằng lại vào ngày mai.');
   };
@@ -1299,10 +1402,22 @@ export function App() {
     month: 'numeric',
   });
 
-  // Nếu người dùng chưa có phòng hoặc không vào bằng link mời: HIỆN GIAO DIỆN CHÀO MỪNG
+  // 1. Nếu người dùng chưa đăng nhập: HIỆN MÀN HÌNH ĐĂNG NHẬP / ĐĂNG KÝ
+  if (!authUser) {
+    return (
+      <AuthScreen
+        onAuthSuccess={handleAuthSuccess}
+        pendingRoomCode={pendingRoomCode}
+      />
+    );
+  }
+
+  // 2. Nếu đã đăng nhập nhưng chưa có phòng: HIỆN GIAO DIỆN CHÀO MỪNG
   if (!hasActiveRoom) {
     return (
       <WelcomeScreen
+        currentUser={authUser}
+        onLogout={handleLogout}
         onJoinByCode={handleJoinRoom}
         onJoinByLink={handleJoinRoom}
         onCreateRoom={handleCreateRoom}
@@ -1348,7 +1463,6 @@ export function App() {
           onRequestNotification={handleRequestNotification}
           notificationPermission={notificationPermission}
           onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
-          onOpenUserSelect={() => setIsUserSelectOpen(true)}
           onOpenTransfer={(chore) => setTransferTargetChore(chore)}
           onAcceptTransfer={handleAcceptTransfer}
           onDeclineTransfer={handleDeclineTransfer}
@@ -1500,7 +1614,6 @@ export function App() {
         roomName={state.roomName}
         roomCode={state.roomCode}
         currentMember={currentMember}
-        onOpenUserSelect={() => setIsUserSelectOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
         onOpenChoreManager={() => setIsChoreManagerOpen(true)}
         onOpenSchedule={() => setIsScheduleOpen(true)}
@@ -1510,6 +1623,7 @@ export function App() {
         onOpenPWA={() => setIsPWAOpen(true)}
         onOpenRoomModal={() => setIsRoomModalOpen(true)}
         onLeaveRoom={handleLeaveRoom}
+        onLogout={handleLogout}
       />
 
       {/* Room Modal */}
@@ -1535,16 +1649,6 @@ export function App() {
       <RulesModal
         isOpen={isRulesOpen}
         onClose={() => setIsRulesOpen(false)}
-      />
-
-      {/* User Select Modal */}
-      <UserSelectModal
-        isOpen={isUserSelectOpen}
-        onClose={() => setIsUserSelectOpen(false)}
-        members={state.members}
-        currentUserId={currentUserId}
-        onSelectUser={handleSelectUser}
-        onAddNewMember={handleAddMember}
       />
 
       {/* Add Chore Modal */}

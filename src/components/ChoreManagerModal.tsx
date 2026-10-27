@@ -403,7 +403,13 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Chu kỳ lặp</label>
                 <select
                   value={frequency}
-                  onChange={(e) => setFrequency(e.target.value as FrequencyType)}
+                  onChange={(e) => {
+                    const newFreq = e.target.value as FrequencyType;
+                    setFrequency(newFreq);
+                    if (newFreq === 'daily') {
+                      setDaysOfWeek([1, 2, 3, 4, 5, 6, 0]);
+                    }
+                  }}
                   className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                 >
                   <option value="daily">Hàng ngày</option>

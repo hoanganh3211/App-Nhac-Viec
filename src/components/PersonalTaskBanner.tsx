@@ -10,7 +10,6 @@ interface PersonalTaskBannerProps {
   onRequestNotification: () => void;
   notificationPermission: NotificationPermission;
   onOpenNotificationSettings?: () => void;
-  onOpenUserSelect: () => void;
   onOpenTransfer: (chore: Chore) => void;
   onAcceptTransfer: (requestId: string) => void;
   onDeclineTransfer: (requestId: string) => void;
@@ -25,7 +24,6 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
   onRequestNotification,
   notificationPermission,
   onOpenNotificationSettings,
-  onOpenUserSelect,
   onOpenTransfer,
   onAcceptTransfer,
   onDeclineTransfer,
@@ -33,23 +31,15 @@ export const PersonalTaskBanner: React.FC<PersonalTaskBannerProps> = ({
 }) => {
   if (!currentMember) {
     return (
-      <div
-        onClick={onOpenUserSelect}
-        className="p-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl text-white shadow-sm cursor-pointer hover:opacity-95 transition"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center space-x-2.5 min-w-0">
-            <span className="text-2xl shrink-0">👤</span>
-            <div className="min-w-0">
-              <div className="font-bold text-xs truncate">Bạn chưa chọn mình là ai!</div>
-              <div className="text-[11px] text-indigo-100 truncate">
-                Bấm vào đây để chọn tên bạn và nhận việc riêng.
-              </div>
+      <div className="p-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl text-white shadow-xs">
+        <div className="flex items-center space-x-2.5">
+          <span className="text-2xl shrink-0">⏳</span>
+          <div className="min-w-0">
+            <div className="font-bold text-xs">Đang đồng bộ thông tin tài khoản...</div>
+            <div className="text-[11px] text-indigo-100">
+              Hệ thống đang chuẩn bị danh sách việc của bạn.
             </div>
           </div>
-          <span className="px-2.5 py-1 bg-white text-indigo-700 text-xs font-bold rounded-xl shadow-2xs shrink-0 whitespace-nowrap">
-            Chọn ngay
-          </span>
         </div>
       </div>
     );

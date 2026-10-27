@@ -291,7 +291,10 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setFrequency('daily')}
+                onClick={() => {
+                  setFrequency('daily');
+                  setDaysOfWeek([1, 2, 3, 4, 5, 6, 0]);
+                }}
                 className={`p-2.5 rounded-2xl border text-left transition cursor-pointer ${
                   frequency === 'daily'
                     ? 'bg-indigo-50 border-indigo-500 text-indigo-900 shadow-2xs'
@@ -299,7 +302,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                 }`}
               >
                 <div className="text-xs font-bold">Hàng ngày</div>
-                <div className="text-[10px] text-slate-400">Lặp lại đều đặn mỗi ngày</div>
+                <div className="text-[10px] text-slate-400">Lặp lại đủ 7 ngày (T2-CN)</div>
               </button>
 
               <button

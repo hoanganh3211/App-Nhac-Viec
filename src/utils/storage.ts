@@ -203,10 +203,22 @@ export const DAYS_OF_WEEK = [
 ];
 
 export const isChoreScheduledToday = (chore: Chore): boolean => {
-  if (chore.frequency === 'once') return true; // Việc 1 lần luôn hiển thị cho đến khi làm xong
-  if (chore.frequency === 'daily') return true;
-  if (!chore.daysOfWeek || chore.daysOfWeek.length === 0) return true;
   const todayDay = new Date().getDay(); // 0 = CN, 1 = T2, ..., 6 = T7
+
+  // 1. Việc làm 1 lần duy nhất: chỉ xuất hiện vào đúng ngày được lên lịch (hoặc luôn hiện nếu chưa chọn thứ)
+  if (chore.frequency === 'once') {
+    if (!chore.daysOfWeek || chore.daysOfWeek.length === 0) return true;
+    return chore.daysOfWeek.includes(todayDay);
+  }
+
+  // 2. Việc hàng ngày: làm mỗi ngày (nếu chọn đủ 7 ngày hoặc không cấu hình daysOfWeek)
+  if (chore.frequency === 'daily') {
+    if (!chore.daysOfWeek || chore.daysOfWeek.length === 0 || chore.daysOfWeek.length === 7) return true;
+    return chore.daysOfWeek.includes(todayDay);
+  }
+
+  // 3. Việc hàng tuần / các thứ cụ thể: kiểm tra xem hôm nay có trong danh sách thứ đã chọn không
+  if (!chore.daysOfWeek || chore.daysOfWeek.length === 0) return true;
   return chore.daysOfWeek.includes(todayDay);
 };
 

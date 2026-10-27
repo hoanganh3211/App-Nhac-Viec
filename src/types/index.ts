@@ -1,3 +1,13 @@
+export interface UserAccount {
+  id: string;
+  username: string; // Tên đăng nhập & tên hiển thị trong phòng
+  passwordPin: string; // Mật khẩu 6 số PIN
+  avatar: string;
+  color: string;
+  createdAt: string;
+  lastRoomCode?: string;
+}
+
 export interface Member {
   id: string;
   name: string;

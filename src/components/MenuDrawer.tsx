@@ -21,7 +21,6 @@ interface MenuDrawerProps {
   roomName: string;
   roomCode: string;
   currentMember?: Member;
-  onOpenUserSelect: () => void;
   onOpenMembers: () => void;
   onOpenChoreManager: () => void;
   onOpenSchedule: () => void;
@@ -31,6 +30,7 @@ interface MenuDrawerProps {
   onOpenPWA: () => void;
   onOpenRoomModal: () => void;
   onLeaveRoom: () => void;
+  onLogout: () => void;
 }
 
 export const MenuDrawer: React.FC<MenuDrawerProps> = ({
@@ -39,7 +39,6 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   roomName,
   roomCode,
   currentMember,
-  onOpenUserSelect,
   onOpenMembers,
   onOpenChoreManager,
   onOpenSchedule,
@@ -49,6 +48,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   onOpenPWA,
   onOpenRoomModal,
   onLeaveRoom,
+  onLogout,
 }) => {
   if (!isOpen) return null;
 
@@ -80,22 +80,24 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
           </button>
         </div>
 
-        {/* Current user & Switch user */}
-        <div className="p-3.5 bg-indigo-50/60 border-b border-indigo-100 flex items-center justify-between">
+        {/* Current user & Logout button */}
+        <div className="p-3.5 bg-indigo-50/70 border-b border-indigo-100 flex items-center justify-between">
           <div className="flex items-center space-x-2.5 min-w-0 mr-2">
             <span className="text-2xl shrink-0">{currentMember?.avatar || '👤'}</span>
             <div className="min-w-0">
-              <div className="text-[10px] text-indigo-900/70 font-semibold uppercase">Tài khoản đang chọn:</div>
+              <div className="text-[10px] text-indigo-900/70 font-semibold uppercase">Đang đăng nhập:</div>
               <div className="text-xs font-bold text-slate-900 truncate">
-                {currentMember ? currentMember.name : 'Chưa chọn danh tính'}
+                {currentMember ? currentMember.name : 'Người dùng'}
               </div>
             </div>
           </div>
           <button
-            onClick={() => handleAction(onOpenUserSelect)}
-            className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50 shadow-2xs transition shrink-0 whitespace-nowrap"
+            onClick={() => handleAction(onLogout)}
+            className="px-2.5 py-1 text-xs font-bold text-rose-600 bg-white border border-rose-200 rounded-xl hover:bg-rose-50 shadow-2xs transition shrink-0 whitespace-nowrap flex items-center space-x-1 cursor-pointer"
+            title="Đăng xuất khỏi tài khoản"
           >
-            Đổi tài khoản
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Đăng xuất</span>
           </button>
         </div>
 
