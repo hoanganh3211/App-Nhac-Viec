@@ -203,26 +203,29 @@ export const DAYS_OF_WEEK = [
 ];
 
 export const isChoreScheduledToday = (chore: Chore): boolean => {
+  if (!chore) return false;
   const todayDay = new Date().getDay(); // 0 = CN, 1 = T2, ..., 6 = T7
+  const days = Array.isArray(chore.daysOfWeek) ? chore.daysOfWeek : [];
 
   // 1. Việc làm 1 lần duy nhất: chỉ xuất hiện vào đúng ngày được lên lịch (hoặc luôn hiện nếu chưa chọn thứ)
   if (chore.frequency === 'once') {
-    if (!chore.daysOfWeek || chore.daysOfWeek.length === 0) return true;
-    return chore.daysOfWeek.includes(todayDay);
+    if (days.length === 0) return true;
+    return days.includes(todayDay);
   }
 
   // 2. Việc hàng ngày: làm mỗi ngày (nếu chọn đủ 7 ngày hoặc không cấu hình daysOfWeek)
   if (chore.frequency === 'daily') {
-    if (!chore.daysOfWeek || chore.daysOfWeek.length === 0 || chore.daysOfWeek.length === 7) return true;
-    return chore.daysOfWeek.includes(todayDay);
+    if (days.length === 0 || days.length === 7) return true;
+    return days.includes(todayDay);
   }
 
   // 3. Việc hàng tuần / các thứ cụ thể: kiểm tra xem hôm nay có trong danh sách thứ đã chọn không
-  if (!chore.daysOfWeek || chore.daysOfWeek.length === 0) return true;
-  return chore.daysOfWeek.includes(todayDay);
+  if (days.length === 0) return true;
+  return days.includes(todayDay);
 };
 
 export const formatChoreDays = (days?: number[], frequency?: FrequencyType): string => {
+  const safeDays = Array.isArray(days) ? days : [];
   const dayMap: Record<number, string> = {
     1: 'Thứ 2',
     2: 'Thứ 3',
@@ -243,17 +246,17 @@ export const formatChoreDays = (days?: number[], frequency?: FrequencyType): str
   };
 
   if (frequency === 'once') {
-    if (days && days.length > 0) {
-      return `⚡ 1 lần (${dayMap[days[0]] || 'Hôm nay'})`;
+    if (safeDays.length > 0) {
+      return `⚡ 1 lần (${dayMap[safeDays[0]] || 'Hôm nay'})`;
     }
     return '⚡ 1 lần duy nhất';
   }
 
-  if (!days || days.length === 0 || days.length === 7 || frequency === 'daily') {
+  if (safeDays.length === 0 || safeDays.length === 7 || frequency === 'daily') {
     return 'Hàng ngày (T2-CN)';
   }
 
-  return days.map((d) => shortDayMap[d] || d).join(', ');
+  return safeDays.map((d) => shortDayMap[d] || d).join(', ');
 };
 
 // Rollover for new day

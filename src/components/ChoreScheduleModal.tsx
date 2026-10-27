@@ -28,9 +28,9 @@ type ViewScope = 'week' | 'month' | 'heatmap';
 export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
   isOpen,
   onClose,
-  chores,
-  members,
-  logs,
+  chores = [],
+  members = [],
+  logs = [],
   currentUserId,
 }) => {
   const [scope, setScope] = useState<ViewScope>('week');
@@ -50,32 +50,55 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
   if (!isOpen) return null;
 
   const todayStr = getTodayDateString();
+  const safeChores = chores || [];
+  const safeMembers = members || [];
+  const safeLogs = logs || [];
 
-  // Helper to format Date to YYYY-MM-DD
+  // Helper an toàn để format Date thành YYYY-MM-DD
   const formatDateToYMD = (d: Date): string => {
+    if (!d || isNaN(d.getTime())) return todayStr;
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
 
+  // Helper kiểm tra công việc có được lên lịch cho một thứ trong tuần không (0 = CN, 1 = T2, ..., 6 = T7)
+  const isChoreOnDayOfWeek = (chore: Chore, dayOfWeek: number): boolean => {
+    if (!chore) return false;
+    const days = Array.isArray(chore.daysOfWeek) ? chore.daysOfWeek : [];
+    if (chore.frequency === 'once') {
+      if (days.length === 0) return true;
+      return days.includes(dayOfWeek);
+    }
+    if (chore.frequency === 'daily') {
+      if (days.length === 0 || days.length === 7) return true;
+      return days.includes(dayOfWeek);
+    }
+    if (days.length === 0) return true;
+    return days.includes(dayOfWeek);
+  };
+
   // 1. Dữ liệu logs được chuẩn hóa theo dateStr
   const normalizedLogs = useMemo(() => {
-    return logs.map((log) => {
-      let date = log.dateStr;
-      if (!date) {
-        if (log.completedAt.includes('Hôm nay')) {
-          date = todayStr;
-        } else {
-          date = todayStr;
+    return safeLogs
+      .filter((log): log is ChoreLog => Boolean(log))
+      .map((log) => {
+        let date = log.dateStr;
+        if (!date) {
+          if (typeof log.completedAt === 'string' && log.completedAt.includes('Hôm nay')) {
+            date = todayStr;
+          } else {
+            date = todayStr;
+          }
         }
-      }
-      return {
-        ...log,
-        dateStr: date,
-      };
-    });
-  }, [logs, todayStr]);
+        return {
+          ...log,
+          dateStr: date || todayStr,
+          pointsEarned: typeof log.pointsEarned === 'number' && !isNaN(log.pointsEarned) ? log.pointsEarned : 0,
+        };
+      });
+  }, [safeLogs, todayStr]);
 
   // 2. Heatmap & Daily Activity Map (dateStr -> { completedCount, penaltyCount, points, logs: [] })
   const dailyActivityMap = useMemo(() => {
@@ -86,15 +109,16 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
 
       const dateKey = log.dateStr || todayStr;
       const existing = map.get(dateKey) || { completedCount: 0, penaltyCount: 0, points: 0, logs: [] };
+      const pts = typeof log.pointsEarned === 'number' ? log.pointsEarned : 0;
 
       if (log.type === 'completed' || log.type === 'recovery_bonus') {
         existing.completedCount += 1;
-        existing.points += log.pointsEarned;
+        existing.points += pts;
       } else if (log.type === 'late_penalty') {
         existing.penaltyCount += 1;
-        existing.points += log.pointsEarned;
+        existing.points += pts;
       } else {
-        existing.points += log.pointsEarned;
+        existing.points += pts;
       }
       existing.logs.push(log);
       map.set(dateKey, existing);
@@ -217,7 +241,20 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
 
   // 6. Tính danh sách công việc và trạng thái cho ngày được chọn (`selectedDateStr`)
   const selectedDateDetails = useMemo(() => {
-    const targetDate = new Date(selectedDateStr + 'T00:00:00');
+    // Parse an toàn selectedDateStr tránh Safari crash
+    let targetDate = new Date();
+    if (selectedDateStr) {
+      const parts = selectedDateStr.split('-');
+      if (parts.length === 3) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+          targetDate = new Date(y, m, d);
+        }
+      }
+    }
+
     const dayOfWeek = targetDate.getDay(); // 0 = CN, 1 = T2, ...
     const isPast = selectedDateStr < todayStr;
     const isToday = selectedDateStr === todayStr;
@@ -227,23 +264,12 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
     const dayLogs = activity ? activity.logs : [];
 
     // Filter chores by member
-    const relevantChores = chores.filter((c) =>
-      selectedMemberId === 'all' ? true : c.assignedTo === selectedMemberId
+    const relevantChores = safeChores.filter((c) =>
+      c && (selectedMemberId === 'all' ? true : c.assignedTo === selectedMemberId)
     );
 
     // Chores scheduled for this day of week
-    const scheduledChores = relevantChores.filter((c) => {
-      if (c.frequency === 'once') {
-        if (!c.daysOfWeek || c.daysOfWeek.length === 0) return true;
-        return c.daysOfWeek.includes(dayOfWeek);
-      }
-      if (c.frequency === 'daily') {
-        if (!c.daysOfWeek || c.daysOfWeek.length === 0 || c.daysOfWeek.length === 7) return true;
-        return c.daysOfWeek.includes(dayOfWeek);
-      }
-      if (!c.daysOfWeek || c.daysOfWeek.length === 0) return true;
-      return c.daysOfWeek.includes(dayOfWeek);
-    });
+    const scheduledChores = relevantChores.filter((c) => isChoreOnDayOfWeek(c, dayOfWeek));
 
     return {
       dateStr: selectedDateStr,
@@ -255,7 +281,7 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
       dayLogs,
       scheduledChores,
     };
-  }, [selectedDateStr, todayStr, dailyActivityMap, chores, selectedMemberId]);
+  }, [selectedDateStr, todayStr, dailyActivityMap, safeChores, selectedMemberId]);
 
   // Overall Stats
   const overallStats = useMemo(() => {
@@ -366,7 +392,7 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
                   : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
               }`}
             >
-              Cả phòng ({members.length})
+              Cả phòng ({safeMembers.length})
             </button>
 
             {currentUserId && (
@@ -382,7 +408,7 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
               </button>
             )}
 
-            {members.map((m) => (
+            {safeMembers.map((m) => (
               <button
                 key={m.id}
                 onClick={() => setSelectedMemberId(m.id)}
@@ -416,7 +442,7 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
 
                 <div className="flex items-center space-x-2">
                   <span>
-                    Tuần từ {weekDays[0].fullDate} đến {weekDays[6].fullDate}
+                    Tuần từ {weekDays[0]?.fullDate} đến {weekDays[6]?.fullDate}
                   </span>
                   {weekOffset !== 0 && (
                     <button
@@ -446,18 +472,10 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
                   const dOfWeek = d.date.getDay();
 
                   // Chores scheduled for this day of week
-                  const dayChores = chores.filter((c) => {
+                  const dayChores = safeChores.filter((c) => {
+                    if (!c) return false;
                     if (selectedMemberId !== 'all' && c.assignedTo !== selectedMemberId) return false;
-                    if (c.frequency === 'once') {
-                      if (!c.daysOfWeek || c.daysOfWeek.length === 0) return true;
-                      return c.daysOfWeek.includes(dOfWeek);
-                    }
-                    if (c.frequency === 'daily') {
-                      if (!c.daysOfWeek || c.daysOfWeek.length === 0 || c.daysOfWeek.length === 7) return true;
-                      return c.daysOfWeek.includes(dOfWeek);
-                    }
-                    if (!c.daysOfWeek || c.daysOfWeek.length === 0) return true;
-                    return c.daysOfWeek.includes(dOfWeek);
+                    return isChoreOnDayOfWeek(c, dOfWeek);
                   });
 
                   return (
@@ -532,7 +550,7 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
                             </p>
                           ) : (
                             dayChores.map((c) => {
-                              const assignee = members.find((m) => m.id === c.assignedTo);
+                              const assignee = safeMembers.find((m) => m.id === c.assignedTo);
                               const isCompleted = d.isToday && c.isCompletedToday;
                               return (
                                 <div
@@ -749,12 +767,14 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
               <div className="flex items-center space-x-1.5">
                 <CalendarIcon className="w-4 h-4 text-indigo-600" />
                 <h4 className="font-bold text-xs text-slate-800">
-                  Chi tiết ngày {selectedDateDetails.targetDate.toLocaleDateString('vi-VN', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'numeric',
-                    year: 'numeric',
-                  })}
+                  Chi tiết ngày {!isNaN(selectedDateDetails.targetDate.getTime())
+                    ? selectedDateDetails.targetDate.toLocaleDateString('vi-VN', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'numeric',
+                        year: 'numeric',
+                      })
+                    : selectedDateDetails.dateStr}
                 </h4>
               </div>
               {selectedDateDetails.isToday && (
@@ -799,7 +819,7 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
                 })
               ) : selectedDateDetails.scheduledChores.length > 0 ? (
                 selectedDateDetails.scheduledChores.map((chore) => {
-                  const assignee = members.find((m) => m.id === chore.assignedTo);
+                  const assignee = safeMembers.find((m) => m.id === chore.assignedTo);
                   const isDone = selectedDateDetails.isToday && chore.isCompletedToday;
                   return (
                     <div
@@ -810,7 +830,7 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
                         <span>{chore.icon}</span>
                         <div className="min-w-0">
                           <div className="font-semibold text-slate-800 truncate">{chore.title}</div>
-                          <div className="text-[10px] text-slate-400">Phụ trách: {assignee?.name}</div>
+                          <div className="text-[10px] text-slate-400">Phụ trách: {assignee?.name || 'Chưa giao'}</div>
                         </div>
                       </div>
                       <div className="flex items-center space-x-1.5 shrink-0">

@@ -122,12 +122,14 @@ export function App() {
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
 
   const unreadNotificationsCount = useMemo(() => {
-    const unreadNotifs = (state.notifications || []).filter(
-      (n) => !currentUserId || !n.readBy.includes(currentUserId)
-    ).length;
-    const pendingVotes = (state.proposals || []).filter(
-      (p) => p.status === 'pending' && (!currentUserId || !p.votes[currentUserId])
-    ).length;
+    const unreadNotifs = (state.notifications || []).filter((n) => {
+      const readList = Array.isArray(n.readBy) ? n.readBy : [];
+      return !currentUserId || !readList.includes(currentUserId);
+    }).length;
+    const pendingVotes = (state.proposals || []).filter((p) => {
+      const votes = p.votes || {};
+      return p.status === 'pending' && (!currentUserId || !votes[currentUserId]);
+    }).length;
     return unreadNotifs + pendingVotes;
   }, [state.notifications, state.proposals, currentUserId]);
 
@@ -1288,10 +1290,13 @@ export function App() {
   // Đánh dấu đã đọc tất cả thông báo
   const handleMarkAllNotificationsAsRead = () => {
     if (!currentUserId) return;
-    const updated = (state.notifications || []).map((n) => ({
-      ...n,
-      readBy: n.readBy.includes(currentUserId) ? n.readBy : [...n.readBy, currentUserId],
-    }));
+    const updated = (state.notifications || []).map((n) => {
+      const readList = Array.isArray(n.readBy) ? n.readBy : [];
+      return {
+        ...n,
+        readBy: readList.includes(currentUserId) ? readList : [...readList, currentUserId],
+      };
+    });
     setState((prev) => ({
       ...prev,
       notifications: updated,
@@ -1734,7 +1739,7 @@ export function App() {
         onClose={() => setIsNotificationsOpen(false)}
         notifications={state.notifications || []}
         proposals={state.proposals || []}
-        members={state.members}
+        members={state.members || []}
         currentUserId={currentUserId}
         onMarkAllRead={handleMarkAllNotificationsAsRead}
         onVoteProposal={handleVoteProposal}
@@ -1754,8 +1759,8 @@ export function App() {
       <ChoreManagerModal
         isOpen={isChoreManagerOpen}
         onClose={() => setIsChoreManagerOpen(false)}
-        chores={state.chores}
-        members={state.members}
+        chores={state.chores || []}
+        members={state.members || []}
         onRequestEditChore={handleRequestEditChore}
         onRequestDeleteChore={handleRequestDeleteChore}
       />
@@ -1764,9 +1769,9 @@ export function App() {
       <ChoreScheduleModal
         isOpen={isScheduleOpen}
         onClose={() => setIsScheduleOpen(false)}
-        chores={state.chores}
-        members={state.members}
-        logs={state.logs}
+        chores={state.chores || []}
+        members={state.members || []}
+        logs={state.logs || []}
         currentUserId={currentUserId}
       />
     </div>

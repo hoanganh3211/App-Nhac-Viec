@@ -136,14 +136,15 @@ export const getTomorrowChoresForUser = (
     const projected = autoBalanceChores(chores, members);
     return projected.filter((c) => {
       if (c.assignedTo !== userId) return false;
+      const days = Array.isArray(c.daysOfWeek) ? c.daysOfWeek : [];
       if (c.frequency === 'once') {
         if (c.isCompletedToday) return false;
-        if (c.daysOfWeek && c.daysOfWeek.length > 0 && !c.daysOfWeek.includes(tomorrowDay)) {
+        if (days.length > 0 && !days.includes(tomorrowDay)) {
           return false;
         }
         return true;
       }
-      if (c.daysOfWeek && c.daysOfWeek.length > 0 && !c.daysOfWeek.includes(tomorrowDay)) {
+      if (days.length > 0 && !days.includes(tomorrowDay)) {
         return false;
       }
       return true;
@@ -151,17 +152,18 @@ export const getTomorrowChoresForUser = (
   }
 
   return chores.filter((chore) => {
+    const days = Array.isArray(chore.daysOfWeek) ? chore.daysOfWeek : [];
     // If it's a 1-time chore: check if assigned to user, not completed, and scheduled for tomorrow
     if (chore.frequency === 'once') {
       if (chore.isCompletedToday || chore.assignedTo !== userId) return false;
-      if (chore.daysOfWeek && chore.daysOfWeek.length > 0 && !chore.daysOfWeek.includes(tomorrowDay)) {
+      if (days.length > 0 && !days.includes(tomorrowDay)) {
         return false;
       }
       return true;
     }
 
     // Check if tomorrow is in chore's scheduled days
-    if (chore.daysOfWeek && chore.daysOfWeek.length > 0 && !chore.daysOfWeek.includes(tomorrowDay)) {
+    if (days.length > 0 && !days.includes(tomorrowDay)) {
       return false;
     }
 
@@ -392,7 +394,8 @@ export const checkAndPushRemoteNotifications = (
   trulyNew.forEach((notif) => {
     if (pushedIds.includes(notif.id)) return;
     // Don't push if the user already read it or initiated it
-    if (notif.readBy.includes(currentUserId)) return;
+    const readByList = Array.isArray(notif.readBy) ? notif.readBy : [];
+    if (readByList.includes(currentUserId)) return;
 
     triggerPushNotification(notif.title, {
       body: notif.message,

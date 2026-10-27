@@ -18,25 +18,29 @@ export const ProposalVoteCard: React.FC<ProposalVoteCardProps> = ({
   // Chỉ hiển thị các biểu quyết đang chờ (pending) mà người dùng này CHƯA BỎ PHIẾU.
   // Những biểu quyết đã vote rồi sẽ tự động ẩn đi tránh làm phiền,
   // người dùng có thể theo dõi kết quả cụ thể trong Trung tâm Thông báo (icon Chuông).
-  const pendingProposalsToVote = proposals.filter((p) => {
-    if (p.status !== 'pending') return false;
-    if (currentUserId && p.votes[currentUserId]) return false;
+  const safeProposals = proposals || [];
+  const safeMembers = members || [];
+  const pendingProposalsToVote = safeProposals.filter((p) => {
+    if (!p || p.status !== 'pending') return false;
+    const votes = p.votes || {};
+    if (currentUserId && votes[currentUserId]) return false;
     return true;
   });
 
   if (pendingProposalsToVote.length === 0) return null;
 
-  const totalMembers = members.length;
+  const totalMembers = Math.max(1, safeMembers.length);
   const requiredVotes = Math.floor(totalMembers / 2) + 1;
 
   return (
     <div className="space-y-2.5">
       {pendingProposalsToVote.map((proposal) => {
-        const agreeVotes = Object.values(proposal.votes).filter((v) => v === 'agree').length;
-        const rejectVotes = Object.values(proposal.votes).filter((v) => v === 'reject').length;
-        const totalVotesCast = Object.keys(proposal.votes).length;
+        const votes = proposal.votes || {};
+        const agreeVotes = Object.values(votes).filter((v) => v === 'agree').length;
+        const rejectVotes = Object.values(votes).filter((v) => v === 'reject').length;
+        const totalVotesCast = Object.keys(votes).length;
 
-        const myVote = currentUserId ? proposal.votes[currentUserId] : undefined;
+        const myVote = currentUserId && votes ? votes[currentUserId] : undefined;
         const hasVoted = Boolean(myVote);
 
         const agreePercentage = Math.round((agreeVotes / totalMembers) * 100);
