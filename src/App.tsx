@@ -1475,9 +1475,10 @@ export function App() {
         />
 
         {/* Date & Quick Progress / Schedule trigger */}
-        <div 
+        <button
+          type="button"
           onClick={() => setIsScheduleOpen(true)}
-          className="flex items-center justify-between text-xs text-slate-600 px-3 py-2 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-100/80 rounded-xl cursor-pointer transition shadow-xs group"
+          className="w-full flex items-center justify-between text-xs text-slate-600 px-3 py-2 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-100/80 rounded-xl cursor-pointer transition shadow-xs group text-left"
           title="Bấm để xem lịch tuần, tháng & bảng hoạt động đóng góp"
         >
           <div className="flex items-center space-x-1.5 font-medium truncate">
@@ -1494,7 +1495,7 @@ export function App() {
               {completedCount}/{state.chores.length}
             </span>
           </div>
-        </div>
+        </button>
 
         {/* Fairness & Karma Board */}
         <FairnessBoard 
@@ -1734,46 +1735,54 @@ export function App() {
       />
 
       {/* Notification & Democratic Voting Center Modal */}
-      <NotificationModal
-        isOpen={isNotificationsOpen}
-        onClose={() => setIsNotificationsOpen(false)}
-        notifications={state.notifications || []}
-        proposals={state.proposals || []}
-        members={state.members || []}
-        currentUserId={currentUserId}
-        onMarkAllRead={handleMarkAllNotificationsAsRead}
-        onVoteProposal={handleVoteProposal}
-        onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
-      />
+      {isNotificationsOpen && (
+        <NotificationModal
+          isOpen={isNotificationsOpen}
+          onClose={() => setIsNotificationsOpen(false)}
+          notifications={state.notifications || []}
+          proposals={state.proposals || []}
+          members={state.members || []}
+          currentUserId={currentUserId}
+          onMarkAllRead={handleMarkAllNotificationsAsRead}
+          onVoteProposal={handleVoteProposal}
+          onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
+        />
+      )}
 
       {/* Push Notification Custom Settings Modal */}
-      <NotificationSettingsModal
-        isOpen={isNotificationSettingsOpen}
-        onClose={() => setIsNotificationSettingsOpen(false)}
-        onSettingsChanged={() => {
-          showToast('🔔 Đã lưu cài đặt thông báo thành công!');
-        }}
-      />
+      {isNotificationSettingsOpen && (
+        <NotificationSettingsModal
+          isOpen={isNotificationSettingsOpen}
+          onClose={() => setIsNotificationSettingsOpen(false)}
+          onSettingsChanged={() => {
+            showToast('🔔 Đã lưu cài đặt thông báo thành công!');
+          }}
+        />
+      )}
 
       {/* Chore Manager Modal (Quản lý, chỉnh sửa, xóa việc) */}
-      <ChoreManagerModal
-        isOpen={isChoreManagerOpen}
-        onClose={() => setIsChoreManagerOpen(false)}
-        chores={state.chores || []}
-        members={state.members || []}
-        onRequestEditChore={handleRequestEditChore}
-        onRequestDeleteChore={handleRequestDeleteChore}
-      />
+      {isChoreManagerOpen && (
+        <ChoreManagerModal
+          isOpen={isChoreManagerOpen}
+          onClose={() => setIsChoreManagerOpen(false)}
+          chores={state.chores || []}
+          members={state.members || []}
+          onRequestEditChore={handleRequestEditChore}
+          onRequestDeleteChore={handleRequestDeleteChore}
+        />
+      )}
 
       {/* Chore Schedule & GitHub Activity Heatmap Modal */}
-      <ChoreScheduleModal
-        isOpen={isScheduleOpen}
-        onClose={() => setIsScheduleOpen(false)}
-        chores={state.chores || []}
-        members={state.members || []}
-        logs={state.logs || []}
-        currentUserId={currentUserId}
-      />
+      {isScheduleOpen && (
+        <ChoreScheduleModal
+          isOpen={isScheduleOpen}
+          onClose={() => setIsScheduleOpen(false)}
+          chores={state.chores || []}
+          members={state.members || []}
+          logs={state.logs || []}
+          currentUserId={currentUserId}
+        />
+      )}
     </div>
   );
 }

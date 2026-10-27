@@ -47,8 +47,6 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
   // weekOffset: 0 = this week, -1 = last week, +1 = next week
   const [weekOffset, setWeekOffset] = useState<number>(0);
 
-  if (!isOpen) return null;
-
   const todayStr = getTodayDateString();
   const safeChores = chores || [];
   const safeMembers = members || [];
@@ -214,8 +212,9 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
   // 5. GitHub Heatmap Cells (Last 70 days / 10 weeks)
   const heatmapDays = useMemo(() => {
     const end = new Date();
+    end.setHours(23, 59, 59, 999);
     // Start 69 days ago
-    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 69);
+    const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 69, 0, 0, 0, 0);
 
     // Adjust start to previous Monday
     const startDay = start.getDay();
@@ -313,6 +312,8 @@ export const ChoreScheduleModal: React.FC<ChoreScheduleModalProps> = ({
     setSelectedDateStr(todayStr);
     setWeekOffset(0);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
