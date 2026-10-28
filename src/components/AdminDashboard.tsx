@@ -30,7 +30,8 @@ import {
   deleteMemberFromCloudRoom, 
   clearAllCloudData, 
   CloudRoomData, 
-  getSupabaseConfig 
+  getSupabaseConfig,
+  saveSupabaseConfig
 } from '../utils/supabase';
 
 interface AdminDashboardProps {
@@ -62,6 +63,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Danger wipe
   const [isWiping, setIsWiping] = useState(false);
+
+  // Supabase Cloud Configuration
+  const currentCfg = getSupabaseConfig();
+  const [cfgUrl, setCfgUrl] = useState(currentCfg?.url || 'https://vmasoxubksvdztiukycq.supabase.co');
+  const [cfgAnonKey, setCfgAnonKey] = useState(currentCfg?.anonKey || '');
+  const [configSaved, setConfigSaved] = useState(false);
+
+  const handleSaveConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cfgUrl.trim() || !cfgAnonKey.trim()) {
+      showToast('⚠️ Vui lòng nhập đầy đủ URL và Anon Key!');
+      return;
+    }
+    saveSupabaseConfig(cfgUrl.trim(), cfgAnonKey.trim());
+    setConfigSaved(true);
+    showToast('✓ Đã lưu cấu hình Supabase Cloud thành công!');
+    setTimeout(() => {
+      setConfigSaved(false);
+      loadAllData();
+    }, 1500);
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -688,12 +710,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* TAB 3: SYSTEM SETTINGS & DANGER ZONE */}
         {activeTab === 'system' && (
           <div className="space-y-4">
-            {/* Supabase Status Card */}
-            <div className="p-4 bg-slate-800/80 rounded-2xl border border-slate-700 space-y-2">
+            {/* Supabase Status & Setup Form */}
+            <div className="p-4 bg-slate-800/80 rounded-2xl border border-slate-700 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 font-bold text-white text-sm">
                   <Database className="w-4 h-4 text-indigo-400" />
-                  <span>Cơ Sở Dữ Liệu Supabase Cloud</span>
+                  <span>Cấu Hình Kết Nối Supabase Cloud (Dành Riêng Cho Admin)</span>
                 </div>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                   isCloudConnected ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300'
@@ -702,13 +724,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Supabase giúp đồng bộ realtime tất cả các phòng và tài khoản giữa điện thoại Android, iPhone và máy tính web.
+                Chỉ Quản trị viên mới có quyền cài đặt hoặc thay đổi địa chỉ kết nối Database Supabase của ứng dụng.
               </p>
-              {supabaseCfg?.url && (
-                <div className="p-2 bg-slate-900 rounded-xl font-mono text-[11px] text-slate-300 truncate">
-                  URL: {supabaseCfg.url}
+
+              <form onSubmit={handleSaveConfig} className="space-y-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Project URL:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="https://xyz.supabase.co"
+                    value={cfgUrl}
+                    onChange={(e) => setCfgUrl(e.target.value)}
+                    className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-indigo-500"
+                  />
                 </div>
-              )}
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Anon Public Key:
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="eyJhbGciOi..."
+                    value={cfgAnonKey}
+                    onChange={(e) => setCfgAnonKey(e.target.value)}
+                    className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                {configSaved && (
+                  <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300 text-xs text-center font-bold animate-in fade-in">
+                    ✓ Đã lưu cấu hình Supabase Cloud thành công!
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition cursor-pointer"
+                >
+                  Lưu Cấu Hình Supabase Cloud
+                </button>
+              </form>
             </div>
 
             {/* Danger Zone: Wipe for Release */}
