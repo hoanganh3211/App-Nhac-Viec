@@ -313,6 +313,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 Chưa có tài khoản? Đăng ký tại đây →
               </button>
             </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginUsername('admin');
+                  setLoginPin('888888');
+                  setError(null);
+                }}
+                className="text-[11px] text-slate-400 hover:text-indigo-600 flex items-center space-x-1.5 transition cursor-pointer py-1 px-2 rounded-lg hover:bg-slate-100"
+                title="Bấm để tự động điền tài khoản Quản trị viên"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Đăng nhập Admin (admin / 888888)</span>
+              </button>
+            </div>
           </form>
         )}
 

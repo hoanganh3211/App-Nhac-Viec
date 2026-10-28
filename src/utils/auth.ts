@@ -9,6 +9,16 @@ export const AVATAR_OPTIONS = [
   '🙋‍♂️', '🙋‍♀️', '🧑‍💻', '👩‍💻', '🧑‍🍳', '👩‍🍳', '🦊', '🐱', '🐼', '🦁', '🐻', '🚀'
 ];
 
+export const DEFAULT_ADMIN_USER: UserAccount = {
+  id: 'usr_admin_root',
+  username: 'admin',
+  passwordPin: '888888',
+  avatar: '🛡️',
+  color: 'from-slate-700 to-slate-900',
+  role: 'admin',
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
 export const COLOR_OPTIONS = [
   'from-indigo-500 to-indigo-600',
   'from-emerald-500 to-emerald-600',
@@ -93,6 +103,9 @@ export const registerAccount = async (
   // Validate username
   if (!cleanUsername) {
     return { success: false, error: 'Vui lòng nhập tên đăng nhập!' };
+  }
+  if (cleanUsername.toLowerCase() === 'admin') {
+    return { success: false, error: 'Tên đăng nhập "admin" được bảo lưu riêng cho Quản trị viên hệ thống!' };
   }
   if (cleanUsername.length < 2) {
     return { success: false, error: 'Tên đăng nhập phải có ít nhất 2 ký tự!' };
@@ -209,6 +222,30 @@ export const loginAccount = async (
     saveUsersDb(allUsers);
   }
 
+  // 1.5. Xử lý đăng nhập tài khoản Quản trị viên (Admin)
+  if (cleanUsername.toLowerCase() === 'admin') {
+    const adminUser = allUsers.find((u) => u.username.toLowerCase() === 'admin');
+    const validPin = adminUser ? adminUser.passwordPin : DEFAULT_ADMIN_USER.passwordPin;
+
+    if (cleanPin !== validPin) {
+      return {
+        success: false,
+        error: 'Mật khẩu Admin không chính xác!',
+      };
+    }
+
+    const activeAdmin: UserAccount = adminUser || DEFAULT_ADMIN_USER;
+    if (!adminUser) {
+      const updatedUsers = [...allUsers, DEFAULT_ADMIN_USER];
+      saveUsersDb(updatedUsers);
+      try {
+        await pushUsersToCloud(updatedUsers);
+      } catch {}
+    }
+    setCurrentAuthUser(activeAdmin);
+    return { success: true, user: activeAdmin };
+  }
+
   // 2. Tìm tài khoản theo tên đăng nhập
   const user = allUsers.find(
     (u) => u.username.toLowerCase() === cleanUsername.toLowerCase()
@@ -270,4 +307,93 @@ export const setPendingRoomInvite = (roomCode: string | null): void => {
       localStorage.removeItem(PENDING_ROOM_INVITE_KEY);
     }
   } catch {}
+};
+
+// Lấy toàn bộ danh sách người dùng cho Admin
+export const getAllUsersForAdmin = async (): Promise<UserAccount[]> => {
+  let cloudUsers: UserAccount[] = [];
+  try {
+    cloudUsers = await fetchUsersFromCloud();
+  } catch (e) {
+    console.warn('Failed to fetch cloud users', e);
+  }
+
+  const localUsers = getUsersDb();
+  const userMap = new Map<string, UserAccount>();
+
+  // Always guarantee admin exists
+  userMap.set('admin', DEFAULT_ADMIN_USER);
+
+  for (const u of localUsers) {
+    userMap.set(u.username.toLowerCase(), u);
+  }
+  for (const u of cloudUsers) {
+    userMap.set(u.username.toLowerCase(), u);
+  }
+
+  return Array.from(userMap.values());
+};
+
+// Xóa tài khoản người dùng
+export const deleteUserAccount = async (userId: string): Promise<{ success: boolean; error?: string }> => {
+  if (userId === DEFAULT_ADMIN_USER.id) {
+    return { success: false, error: 'Không thể xóa tài khoản Quản trị viên gốc!' };
+  }
+
+  try {
+    let cloudUsers = await fetchUsersFromCloud();
+    let localUsers = getUsersDb();
+
+    const userMap = new Map<string, UserAccount>();
+    for (const u of localUsers) userMap.set(u.id, u);
+    for (const u of cloudUsers) userMap.set(u.id, u);
+
+    const target = userMap.get(userId);
+    if (target && target.username.toLowerCase() === 'admin') {
+      return { success: false, error: 'Không thể xóa tài khoản Quản trị viên!' };
+    }
+
+    userMap.delete(userId);
+    const updatedUsers = Array.from(userMap.values());
+
+    saveUsersDb(updatedUsers);
+    await pushUsersToCloud(updatedUsers);
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Lỗi khi xóa tài khoản' };
+  }
+};
+
+// Đặt lại mã PIN 6 số cho người dùng
+export const adminResetUserPin = async (
+  userId: string,
+  newPin: string
+): Promise<{ success: boolean; error?: string }> => {
+  if (!/^\d{6}$/.test(newPin.trim())) {
+    return { success: false, error: 'Mật khẩu mới phải gồm đúng 6 chữ số!' };
+  }
+
+  try {
+    let cloudUsers = await fetchUsersFromCloud();
+    let localUsers = getUsersDb();
+
+    const userMap = new Map<string, UserAccount>();
+    for (const u of localUsers) userMap.set(u.id, u);
+    for (const u of cloudUsers) userMap.set(u.id, u);
+
+    const user = userMap.get(userId);
+    if (!user) return { success: false, error: 'Không tìm thấy tài khoản!' };
+
+    user.passwordPin = newPin.trim();
+    userMap.set(userId, user);
+
+    const updatedUsers = Array.from(userMap.values());
+    saveUsersDb(updatedUsers);
+    await pushUsersToCloud(updatedUsers);
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Lỗi khi đổi mật khẩu' };
+  }
 };

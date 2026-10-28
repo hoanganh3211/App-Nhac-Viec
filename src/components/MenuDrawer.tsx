@@ -12,7 +12,8 @@ import {
   Bell,
   ClipboardList,
   Calendar,
-  BookOpen
+  BookOpen,
+  ShieldCheck
 } from 'lucide-react';
 import { Member } from '../types';
 
@@ -22,6 +23,8 @@ interface MenuDrawerProps {
   roomName: string;
   roomCode: string;
   currentMember?: Member;
+  isAdmin?: boolean;
+  onOpenAdminDashboard?: () => void;
   onOpenMembers: () => void;
   onOpenChoreManager: () => void;
   onOpenSchedule: () => void;
@@ -41,6 +44,8 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   roomName,
   roomCode,
   currentMember,
+  isAdmin,
+  onOpenAdminDashboard,
   onOpenMembers,
   onOpenChoreManager,
   onOpenSchedule,
@@ -106,6 +111,27 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
         {/* Menu Items */}
         <div className="p-3 space-y-1 overflow-y-auto">
+          {/* Admin Dashboard (chỉ hiện khi là tài khoản Admin) */}
+          {isAdmin && onOpenAdminDashboard && (
+            <button
+              onClick={() => handleAction(onOpenAdminDashboard)}
+              className="w-full p-2.5 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 flex items-center justify-between text-left transition group cursor-pointer shadow-md mb-1.5"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-violet-600 text-white flex items-center justify-center shadow-xs">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center space-x-1.5">
+                    <span>Bảng Quản Trị Hệ Thống (Admin)</span>
+                  </div>
+                  <div className="text-[11px] text-slate-300">Quản lý các phòng & tất cả thành viên</div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition" />
+            </button>
+          )}
+
           {/* Room Management (Mã phòng / Link mời / Tạo phòng) */}
           <button
             onClick={() => handleAction(onOpenRoomModal)}

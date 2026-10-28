@@ -207,3 +207,102 @@ export const clearAllCloudData = async (): Promise<{ success: boolean; error?: s
     return { success: false, error: err?.message || 'Lỗi khi xóa dữ liệu đám mây.' };
   }
 };
+
+export interface CloudRoomData {
+  roomCode: string;
+  roomName: string;
+  memberCount: number;
+  choreCount: number;
+  updatedAt: string;
+  members: import('../types').Member[];
+  chores: import('../types').Chore[];
+}
+
+// Fetch all rooms from Cloud for Admin Dashboard
+export const fetchAllRoomsForAdmin = async (): Promise<CloudRoomData[]> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('room_states')
+      .select('room_code, state_data, updated_at')
+      .neq('room_code', GLOBAL_USERS_ROOM_CODE)
+      .order('updated_at', { ascending: false });
+
+    if (error || !data) return [];
+
+    return data.map((row: any) => {
+      const state = (row.state_data as AppState) || {};
+      return {
+        roomCode: row.room_code,
+        roomName: state.roomName || row.room_code,
+        memberCount: Array.isArray(state.members) ? state.members.length : 0,
+        choreCount: Array.isArray(state.chores) ? state.chores.length : 0,
+        updatedAt: row.updated_at || state.lastDateChecked || new Date().toISOString(),
+        members: state.members || [],
+        chores: state.chores || [],
+      };
+    });
+  } catch (err) {
+    console.error('Failed to fetch rooms for admin', err);
+    return [];
+  }
+};
+
+// Delete a room from Supabase Cloud
+export const deleteRoomFromCloud = async (roomCode: string): Promise<{ success: boolean; error?: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Chưa kết nối Supabase Cloud.' };
+
+  try {
+    const { error } = await supabase
+      .from('room_states')
+      .delete()
+      .eq('room_code', roomCode);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Lỗi khi xóa phòng.' };
+  }
+};
+
+// Delete a member from a cloud room
+export const deleteMemberFromCloudRoom = async (
+  roomCode: string,
+  memberId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Chưa kết nối Supabase Cloud.' };
+
+  try {
+    const state = await fetchStateFromCloud(roomCode);
+    if (!state) return { success: false, error: 'Không tìm thấy dữ liệu phòng.' };
+
+    const updatedMembers = (state.members || []).filter((m) => m.id !== memberId);
+    const updatedChores = (state.chores || []).map((c) => {
+      if (c.assignedTo === memberId) {
+        return {
+          ...c,
+          assignedTo: updatedMembers.length > 0 ? updatedMembers[0].id : '',
+        };
+      }
+      return c;
+    });
+
+    const newState: AppState = {
+      ...state,
+      members: updatedMembers,
+      chores: updatedChores,
+    };
+
+    const pushed = await pushStateToCloud(newState);
+    if (!pushed) return { success: false, error: 'Không thể cập nhật phòng sau khi xóa thành viên.' };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Lỗi khi xóa thành viên khỏi phòng.' };
+  }
+};

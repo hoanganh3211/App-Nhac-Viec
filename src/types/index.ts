@@ -6,6 +6,7 @@ export interface UserAccount {
   color: string;
   createdAt: string;
   lastRoomCode?: string;
+  role?: 'admin' | 'user';
 }
 
 export interface Member {

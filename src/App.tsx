@@ -5,7 +5,8 @@ import {
   Calendar, 
   CheckCircle2, 
   Share2, 
-  UserCheck
+  UserCheck,
+  ShieldCheck
 } from 'lucide-react';
 import { AppState, Chore, Member, TransferRequest, ChoreLog, RoomProposal, AppNotification } from './types';
 import { loadState, saveState, getTodayDateString, autoBalanceChores, handleDayRollover, isChoreScheduledToday } from './utils/storage';
@@ -38,6 +39,7 @@ import { TransferChoreModal } from './components/TransferChoreModal';
 import { RoomModal } from './components/RoomModal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { AuthScreen } from './components/AuthScreen';
+import { AdminDashboard } from './components/AdminDashboard';
 import { 
   getCurrentAuthUser, 
   logoutAccount, 
@@ -113,6 +115,7 @@ export function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPWAOpen, setIsPWAOpen] = useState(false);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [transferTargetChore, setTransferTargetChore] = useState<Chore | null>(null);
@@ -835,6 +838,14 @@ export function App() {
     if (isNewRegistration) {
       setIsTutorialOpen(true);
     }
+
+    // Nếu đăng nhập bằng tài khoản Quản trị viên (Admin), tự động mở Admin Dashboard
+    if (user.role === 'admin' || user.username.toLowerCase() === 'admin') {
+      setIsAdminDashboardOpen(true);
+      showToast(`🛡️ Xin chào Quản trị viên! Đang mở Bảng Quản Trị Hệ Thống.`);
+      return;
+    }
+
     const targetCode = pendingRoomCode || getPendingRoomInvite() || user.lastRoomCode;
 
     if (targetCode) {
@@ -1461,10 +1472,39 @@ export function App() {
     );
   }
 
+  const isAdmin = authUser.role === 'admin' || authUser.username.toLowerCase() === 'admin';
+
+  // 1.5. Nếu là Quản trị viên và đang mở Admin Dashboard: HIỆN BẢNG ĐIỀU KHIỂN QUẢN TRỊ
+  if (isAdmin && isAdminDashboardOpen) {
+    return (
+      <AdminDashboard
+        adminUser={authUser}
+        onLogout={handleLogout}
+        onSwitchToApp={async (targetRoomCode) => {
+          setIsAdminDashboardOpen(false);
+          if (targetRoomCode) {
+            await handleJoinRoom(targetRoomCode, authUser);
+          }
+        }}
+      />
+    );
+  }
+
   // 2. Nếu đã đăng nhập nhưng chưa có phòng: HIỆN GIAO DIỆN CHÀO MỪNG
   if (!hasActiveRoom) {
     return (
       <>
+        {isAdmin && (
+          <div className="fixed top-3 right-3 z-50">
+            <button
+              onClick={() => setIsAdminDashboardOpen(true)}
+              className="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-lg flex items-center space-x-1.5 cursor-pointer hover:bg-slate-800 border border-slate-700"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Admin Dashboard</span>
+            </button>
+          </div>
+        )}
         <WelcomeScreen
           currentUser={authUser}
           onLogout={handleLogout}
@@ -1683,6 +1723,8 @@ export function App() {
         roomName={state.roomName}
         roomCode={state.roomCode}
         currentMember={currentMember}
+        isAdmin={isAdmin}
+        onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
         onOpenChoreManager={() => setIsChoreManagerOpen(true)}
         onOpenSchedule={() => setIsScheduleOpen(true)}
@@ -1695,6 +1737,20 @@ export function App() {
         onLeaveRoom={handleLeaveRoom}
         onLogout={handleLogout}
       />
+
+      {/* Persistent Floating Admin Shortcut Button */}
+      {isAdmin && (
+        <div className="fixed bottom-20 right-4 z-40">
+          <button
+            onClick={() => setIsAdminDashboardOpen(true)}
+            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-2xl flex items-center space-x-1.5 border border-slate-700 cursor-pointer animate-in fade-in"
+            title="Mở Bảng Quản Trị Hệ Thống (Admin Dashboard)"
+          >
+            <ShieldCheck className="w-4 h-4 text-indigo-400" />
+            <span>Admin Panel</span>
+          </button>
+        </div>
+      )}
 
       {/* Room Modal */}
       <RoomModal
