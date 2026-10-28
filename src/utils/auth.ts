@@ -38,6 +38,27 @@ export const saveUsersDb = (users: UserAccount[]): void => {
   }
 };
 
+export const clearLocalUsersDb = (): void => {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key !== 'app_nhac_viec_supabase_cfg') {
+        if (
+          key.startsWith('app_nhac_viec_') || 
+          key.includes('tutorial_seen_') ||
+          key.includes('current_auth_user')
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch (e) {
+    console.error('Failed to clear local users db', e);
+  }
+};
+
 export const getCurrentAuthUser = (): UserAccount | null => {
   try {
     const raw = localStorage.getItem(CURRENT_AUTH_USER_KEY);

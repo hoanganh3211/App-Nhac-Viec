@@ -9,17 +9,20 @@ import {
   ShieldCheck, 
   CheckCircle2, 
   AlertCircle,
-  KeyRound
+  KeyRound,
+  Trash2
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { 
   loginAccount, 
   registerAccount, 
-  AVATAR_OPTIONS 
+  AVATAR_OPTIONS,
+  clearLocalUsersDb
 } from '../utils/auth';
 import { 
   getSupabaseConfig, 
-  saveSupabaseConfig 
+  saveSupabaseConfig,
+  clearAllCloudData
 } from '../utils/supabase';
 
 interface AuthScreenProps {
@@ -57,6 +60,40 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [cfgUrl, setCfgUrl] = useState(currentCfg?.url || '');
   const [cfgAnonKey, setCfgAnonKey] = useState(currentCfg?.anonKey || '');
   const [configSuccess, setConfigSuccess] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearSuccess, setClearSuccess] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+
+  const handleClearAllData = async () => {
+    if (!window.confirm('⚠️ CẢNH BÁO XÓA DATABASE:\n\nThao tác này sẽ XÓA SẠCH toàn bộ tài khoản người dùng và tất cả phòng thử nghiệm khỏi cơ sở dữ liệu Supabase và máy này để bạn release app mới!\n\nBạn có chắc chắn 100% muốn tiếp tục?')) {
+      return;
+    }
+
+    setIsClearing(true);
+    setClearError(null);
+    setClearSuccess(false);
+
+    try {
+      // 1. Xóa trên Cloud
+      const cloudRes = await clearAllCloudData();
+      // 2. Xóa trên Local máy này
+      clearLocalUsersDb();
+
+      setIsClearing(false);
+      if (cloudRes.success) {
+        setClearSuccess(true);
+        setTimeout(() => {
+          setClearSuccess(false);
+          window.location.reload();
+        }, 1500);
+      } else {
+        setClearError(cloudRes.error || 'Xóa trên Cloud thất bại');
+      }
+    } catch (e: any) {
+      setIsClearing(false);
+      setClearError(e?.message || 'Có lỗi xảy ra khi xóa dữ liệu');
+    }
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -486,6 +523,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 </button>
               </div>
             </form>
+
+            {/* Release App / Reset Database Section */}
+            <div className="pt-3 border-t border-slate-100 space-y-2">
+              <div className="flex items-center space-x-1.5 text-rose-700 text-xs font-bold">
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Khu vực Reset chuẩn bị Release App</span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Bấm nút dưới đây để xóa sạch toàn bộ tài khoản thử nghiệm và các phòng cũ trong cơ sở dữ liệu Supabase.
+              </p>
+
+              {clearError && (
+                <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-[11px]">
+                  {clearError}
+                </div>
+              )}
+
+              {clearSuccess && (
+                <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-[11px] font-bold text-center animate-in fade-in">
+                  ✓ Đã xóa sạch dữ liệu DB! Trang web sẽ tự làm mới ngay...
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={isClearing}
+                onClick={handleClearAllData}
+                className="w-full py-2.5 px-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isClearing ? 'Đang xóa dữ liệu...' : '🗑️ Xóa Sạch Dữ Liệu DB Để Release'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

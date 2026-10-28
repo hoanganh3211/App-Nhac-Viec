@@ -185,3 +185,25 @@ export const pushUsersToCloud = async (users: UserAccount[]): Promise<boolean> =
     return false;
   }
 };
+
+// Clear all users and rooms from Supabase Cloud
+export const clearAllCloudData = async (): Promise<{ success: boolean; error?: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Chưa kết nối Supabase Cloud.' };
+
+  try {
+    const { error } = await supabase
+      .from('room_states')
+      .delete()
+      .neq('room_code', '__NEVER_MATCHING_CODE__');
+
+    if (error) {
+      console.error('Failed to clear cloud data', error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('Exception clearing cloud data', err);
+    return { success: false, error: err?.message || 'Lỗi khi xóa dữ liệu đám mây.' };
+  }
+};
