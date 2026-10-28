@@ -23,7 +23,7 @@ import {
 } from '../utils/supabase';
 
 interface AuthScreenProps {
-  onAuthSuccess: (user: UserAccount) => void;
+  onAuthSuccess: (user: UserAccount, isNewRegistration?: boolean) => void;
   pendingRoomCode?: string | null;
 }
 
@@ -68,7 +68,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       setIsLoading(false);
 
       if (res.success && res.user) {
-        onAuthSuccess(res.user);
+        onAuthSuccess(res.user, false);
       } else {
         setError(res.error || 'Đăng nhập không thành công.');
       }
@@ -93,7 +93,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       setIsLoading(false);
 
       if (res.success && res.user) {
-        onAuthSuccess(res.user);
+        onAuthSuccess(res.user, true);
       } else {
         setError(res.error || 'Đăng ký tài khoản không thành công.');
       }

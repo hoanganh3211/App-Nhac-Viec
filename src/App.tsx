@@ -30,6 +30,7 @@ import { MemberManagerModal } from './components/MemberManagerModal';
 import { ZaloReminderModal } from './components/ZaloReminderModal';
 import { HistoryModal } from './components/HistoryModal';
 import { RulesModal } from './components/RulesModal';
+import { TutorialModal } from './components/TutorialModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { MenuDrawer } from './components/MenuDrawer';
 import { TransferChoreModal } from './components/TransferChoreModal';
@@ -110,6 +111,7 @@ export function App() {
   const [isZaloOpen, setIsZaloOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [isPWAOpen, setIsPWAOpen] = useState(false);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [transferTargetChore, setTransferTargetChore] = useState<Chore | null>(null);
@@ -824,8 +826,11 @@ export function App() {
   };
 
   // Đăng nhập / Đăng ký thành công từ AuthScreen
-  const handleAuthSuccess = async (user: UserAccount) => {
+  const handleAuthSuccess = async (user: UserAccount, isNewRegistration?: boolean) => {
     setAuthUser(user);
+    if (isNewRegistration) {
+      setIsTutorialOpen(true);
+    }
     const targetCode = pendingRoomCode || getPendingRoomInvite() || user.lastRoomCode;
 
     if (targetCode) {
@@ -1437,13 +1442,20 @@ export function App() {
   // 2. Nếu đã đăng nhập nhưng chưa có phòng: HIỆN GIAO DIỆN CHÀO MỪNG
   if (!hasActiveRoom) {
     return (
-      <WelcomeScreen
-        currentUser={authUser}
-        onLogout={handleLogout}
-        onJoinByCode={handleJoinRoom}
-        onJoinByLink={handleJoinRoom}
-        onCreateRoom={handleCreateRoom}
-      />
+      <>
+        <WelcomeScreen
+          currentUser={authUser}
+          onLogout={handleLogout}
+          onJoinByCode={handleJoinRoom}
+          onJoinByLink={handleJoinRoom}
+          onCreateRoom={handleCreateRoom}
+        />
+        <TutorialModal
+          isOpen={isTutorialOpen}
+          onClose={() => setIsTutorialOpen(false)}
+          userId={authUser?.id}
+        />
+      </>
     );
   }
 
@@ -1655,6 +1667,7 @@ export function App() {
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenRules={() => setIsRulesOpen(true)}
+        onOpenTutorial={() => setIsTutorialOpen(true)}
         onOpenPWA={() => setIsPWAOpen(true)}
         onOpenRoomModal={() => setIsRoomModalOpen(true)}
         onLeaveRoom={handleLeaveRoom}
@@ -1684,6 +1697,13 @@ export function App() {
       <RulesModal
         isOpen={isRulesOpen}
         onClose={() => setIsRulesOpen(false)}
+      />
+
+      {/* Tutorial / Onboarding Modal */}
+      <TutorialModal
+        isOpen={isTutorialOpen}
+        onClose={() => setIsTutorialOpen(false)}
+        userId={authUser?.id}
       />
 
       {/* Add Chore Modal */}
