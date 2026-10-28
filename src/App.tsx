@@ -14,7 +14,8 @@ import {
   getNotificationPermission, 
   requestNotificationPermission, 
   checkAndNotifyMyChores,
-  checkAndPushRemoteNotifications
+  checkAndPushRemoteNotifications,
+  clearAllActiveNotifications
 } from './utils/notifications';
 import { 
   getSupabaseClient, 
@@ -187,7 +188,7 @@ export function App() {
 
   // Realtime subscription via Supabase if configured by dev (có lọc dữ liệu chống giật màn hình)
   useEffect(() => {
-    if (!hasActiveRoom) return;
+    if (!hasActiveRoom || !authUser) return;
     const supabase = getSupabaseClient();
     if (!supabase) return;
 
@@ -202,6 +203,7 @@ export function App() {
           filter: `room_code=eq.${state.roomCode}`,
         },
         (payload) => {
+          if (!currentUserIdRef.current) return;
           if (payload.new && (payload.new as any).state_data) {
             const newState = (payload.new as any).state_data as AppState;
             const newJson = JSON.stringify(newState);
@@ -212,11 +214,13 @@ export function App() {
             lastPushedJsonRef.current = newJson;
 
             // Đẩy thông báo tức thì ra màn hình khóa khi bạn cùng phòng hoàn thành việc/nhượng việc/biểu quyết
-            checkAndPushRemoteNotifications(
-              stateRef.current.notifications || [],
-              newState.notifications || [],
-              currentUserIdRef.current
-            );
+            if (currentUserIdRef.current) {
+              checkAndPushRemoteNotifications(
+                stateRef.current.notifications || [],
+                newState.notifications || [],
+                currentUserIdRef.current
+              );
+            }
 
             setState(newState);
           }
@@ -227,7 +231,7 @@ export function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [state.roomCode, hasActiveRoom]);
+  }, [state.roomCode, hasActiveRoom, authUser]);
 
   // Targeted chores for current user (hôm nay có lịch)
   const myChores = useMemo(() => {
@@ -245,7 +249,7 @@ export function App() {
 
   // Periodic check (Midnight rollover, notifications cá nhân, và phạt trừ điểm trễ)
   const runPeriodicTasks = useCallback(() => {
-    if (!hasActiveRoom) return;
+    if (!hasActiveRoom || !authUser || !currentUserIdRef.current) return;
     const currentState = stateRef.current;
     const todayStr = getTodayDateString();
 
@@ -341,11 +345,11 @@ export function App() {
 
   // Định kỳ chạy mỗi 60 giây (không tạo vòng lặp render)
   useEffect(() => {
-    if (!hasActiveRoom) return;
+    if (!hasActiveRoom || !authUser) return;
     runPeriodicTasks();
     const interval = setInterval(runPeriodicTasks, 60000);
     return () => clearInterval(interval);
-  }, [hasActiveRoom, runPeriodicTasks]);
+  }, [hasActiveRoom, authUser, runPeriodicTasks]);
 
   const handleRequestNotification = async () => {
     const granted = await requestNotificationPermission();
@@ -863,7 +867,25 @@ export function App() {
   };
 
   // Đăng xuất tài khoản
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // 1. Huỷ ngay lập tức quyền ID và thành viên hiện tại trong refs để chống rò rỉ thông báo
+    currentUserIdRef.current = null;
+    currentMemberRef.current = undefined;
+
+    // 2. Ngắt kết nối tất cả các kênh Supabase Realtime đang mở
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        supabase.removeAllChannels();
+      } catch (err) {
+        console.warn('Failed to remove supabase channels on logout', err);
+      }
+    }
+
+    // 3. Xoá sạch toàn bộ thông báo đang treo trên thanh trạng thái / màn hình khóa của máy
+    await clearAllActiveNotifications();
+
+    // 4. Đăng xuất tài khoản và chuyển về màn hình đăng nhập
     logoutAccount();
     setAuthUser(null);
     setHasActiveRoom(false);

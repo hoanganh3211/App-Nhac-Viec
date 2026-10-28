@@ -424,3 +424,27 @@ export const checkAndNotifyMyChores = (
   checkAndSendScheduledReminders(chores, members, currentUserId, currentMember, rebalancePendingTomorrow);
   checkAndSendDeadlineAlerts(chores, currentUserId, currentMember);
 };
+
+/**
+ * Dismisses/clears all active notifications currently shown on the phone/computer
+ * and resets notification tracking cache upon logout.
+ */
+export const clearAllActiveNotifications = async (): Promise<void> => {
+  try {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && reg.getNotifications) {
+        const activeNotifs = await reg.getNotifications();
+        activeNotifs.forEach((n) => n.close());
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to clear active notifications on logout:', err);
+  }
+
+  try {
+    localStorage.removeItem(DAILY_SCHEDULED_NOTIFS_KEY);
+    localStorage.removeItem(NOTIFIED_MILESTONES_KEY);
+    localStorage.removeItem(PUSHED_REMOTE_NOTIFS_KEY);
+  } catch {}
+};
