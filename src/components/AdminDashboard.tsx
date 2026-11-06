@@ -18,7 +18,8 @@ import {
   Copy,
   Check,
   RotateCcw,
-  Scale
+  Scale,
+  CheckCircle2
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { 
@@ -37,7 +38,8 @@ import {
   saveSupabaseConfig,
   resetAllChoresAndPointsKeepRoomsAndMembers,
   resetSingleRoomChoresAndPoints,
-  rebalanceRoomChoresForAdmin
+  rebalanceRoomChoresForAdmin,
+  completeAllTodayChoresForRoom
 } from '../utils/supabase';
 import { resetLocalChoresAndPoints } from '../utils/storage';
 
@@ -125,6 +127,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   useEffect(() => {
     loadAllData();
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const key = `admin_auto_done_pvzox_${todayStr}`;
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, 'true');
+      completeAllTodayChoresForRoom('P-VZOX').then((res) => {
+        if (res.success && (res.completedCount || 0) > 0) {
+          loadAllData();
+        }
+      });
+    }
   }, []);
 
   // Filtered rooms
@@ -378,6 +390,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           showToast(`⚖️ ${res.message || 'Đã phân chia lại công việc công bằng!'}`);
           loadAllData();
         }
+      } else {
+        showToast(`❌ Thao tác thất bại: ${res.error}`);
+      }
+    } catch (e: any) {
+      showToast(`❌ Lỗi: ${e?.message}`);
+    }
+  };
+
+  // Hoàn thành toàn bộ công việc hôm nay của phòng (tính bắt đầu chu kỳ từ mai)
+  const handleCompleteAllToday = async (roomCode: string, roomName: string) => {
+    if (
+      !window.confirm(
+        `✅ XÁC NHẬN HOÀN THÀNH VIỆC HÔM NAY CHO PHÒNG "${roomName}" (${roomCode}):\n\n` +
+        `- Đánh dấu toàn bộ công việc hôm nay là ĐÃ HOÀN THÀNH.\n` +
+        `- Cộng điểm thưởng tương ứng cho các thành viên được giao.\n` +
+        `- Bắt đầu từ ngày mai, hệ thống sẽ tự động xoay phiên lượt mới sang các bạn tiếp theo.\n\n` +
+        `Bạn có chắc chắn muốn thực hiện?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const res = await completeAllTodayChoresForRoom(roomCode);
+      if (res.success) {
+        showToast(
+          `✓ Đã hoàn thành toàn bộ việc hôm nay cho phòng "${roomName}" (${res.completedCount || 0} việc)! Bắt đầu tính từ ngày mai.`
+        );
+        loadAllData();
       } else {
         showToast(`❌ Thao tác thất bại: ${res.error}`);
       }
@@ -667,6 +708,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </button>
 
                         <button
+                          onClick={() => handleCompleteAllToday(room.roomCode, room.roomName)}
+                          className="p-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition cursor-pointer"
+                          title="Hoàn thành tất cả việc hôm nay (Bắt đầu chu kỳ từ mai)"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                        </button>
+
+                        <button
                           onClick={() => handleRebalanceRoom(room.roomCode, room.roomName)}
                           className="p-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 transition cursor-pointer"
                           title="Cân bằng lại công việc theo công thức chia việc công bằng"
@@ -757,14 +806,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <ClipboardList className="w-3.5 h-3.5 text-amber-400" />
                               <span>Danh sách công việc trong phòng ({room.chores.length}):</span>
                             </div>
-                            <button
-                              onClick={() => handleRebalanceRoom(room.roomCode, room.roomName)}
-                              className="px-2.5 py-1 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold text-[10px] shadow-xs flex items-center space-x-1 transition cursor-pointer"
-                              title="Tái cân bằng công việc theo công thức chia việc công bằng"
-                            >
-                              <Scale className="w-3 h-3" />
-                              <span>Cân bằng việc</span>
-                            </button>
+                            <div className="flex items-center space-x-1.5">
+                              <button
+                                onClick={() => handleCompleteAllToday(room.roomCode, room.roomName)}
+                                className="px-2.5 py-1 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-[10px] shadow-xs flex items-center space-x-1 transition cursor-pointer"
+                                title="Đánh dấu hoàn thành toàn bộ việc hôm nay để bắt đầu tính từ mai"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Xong hết hôm nay</span>
+                              </button>
+                              <button
+                                onClick={() => handleRebalanceRoom(room.roomCode, room.roomName)}
+                                className="px-2.5 py-1 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold text-[10px] shadow-xs flex items-center space-x-1 transition cursor-pointer"
+                                title="Tái cân bằng công việc theo công thức chia việc công bằng"
+                              >
+                                <Scale className="w-3 h-3" />
+                                <span>Cân bằng việc</span>
+                              </button>
+                            </div>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {room.chores.map((chore) => {

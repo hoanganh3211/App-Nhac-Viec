@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { AppState, UserAccount } from '../types';
-import { autoBalanceChores } from './storage';
+import { AppState, UserAccount, ChoreLog } from '../types';
+import { autoBalanceChores, isChoreScheduledToday, getTodayDateString } from './storage';
 
 const SUPABASE_CONFIG_KEY = 'app_nhac_viec_supabase_cfg';
 
@@ -555,5 +555,93 @@ export const rebalanceRoomChoresForAdmin = async (
     };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Lỗi khi cân bằng công việc.' };
+  }
+};
+
+/**
+ * Đánh dấu hoàn thành toàn bộ công việc của ngày hôm nay cho 1 phòng
+ * và chuẩn bị để bắt đầu xoay chu kỳ mới từ ngày mai
+ */
+export const completeAllTodayChoresForRoom = async (
+  roomCode: string
+): Promise<{ success: boolean; completedCount?: number; error?: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Chưa kết nối Supabase Cloud.' };
+
+  try {
+    const cleanCode = roomCode.trim().toUpperCase();
+    const state = await fetchStateFromCloud(cleanCode);
+    if (!state) return { success: false, error: 'Không tìm thấy dữ liệu phòng.' };
+
+    const todayStr = getTodayDateString();
+    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+    const memberPointsDelta: Record<string, number> = {};
+    const newLogs: ChoreLog[] = [];
+    let completedCount = 0;
+
+    const updatedChores = (state.chores || []).map((chore) => {
+      const isScheduled = isChoreScheduledToday(chore) || chore.frequency === 'daily' || !chore.isCompletedToday;
+      if (isScheduled && !chore.isCompletedToday) {
+        completedCount++;
+        const assignee = (state.members || []).find((m) => m.id === chore.assignedTo);
+        const assigneeName = assignee?.name || 'Thành viên';
+
+        memberPointsDelta[chore.assignedTo] = (memberPointsDelta[chore.assignedTo] || 0) + chore.points;
+
+        newLogs.push({
+          id: 'log_all_done_' + Date.now() + '_' + chore.id,
+          choreId: chore.id,
+          choreTitle: chore.title,
+          memberId: chore.assignedTo,
+          memberName: assigneeName,
+          completedAt: `Hôm nay ${nowTimeStr}`,
+          pointsEarned: chore.points,
+          type: 'completed',
+          dateStr: todayStr,
+          note: `Đã hoàn thành việc hôm nay (+${chore.points}đ). Chu kỳ mới bắt đầu từ mai!`,
+        });
+
+        return {
+          ...chore,
+          isCompletedToday: true,
+          completedAt: `Hôm nay ${nowTimeStr}`,
+          completedBy: chore.assignedTo,
+          isLatePenalized: false,
+          redoRequest: undefined,
+        };
+      }
+      return chore;
+    });
+
+    const updatedMembers = (state.members || []).map((m) => {
+      const delta = memberPointsDelta[m.id] || 0;
+      return {
+        ...m,
+        points: (m.points || 0) + delta,
+        streak: delta > 0 ? Math.max(m.streak || 0, 1) : (m.streak || 0),
+        lateViolations: 0,
+      };
+    });
+
+    const newState: AppState = {
+      ...state,
+      members: updatedMembers,
+      chores: updatedChores,
+      logs: [...newLogs, ...(state.logs || [])].slice(0, 100),
+      lastDateChecked: todayStr,
+      updatedAt: new Date().toISOString(),
+      version: (state.version || 0) + 1,
+      lastUpdatedBy: 'admin_complete_all',
+    };
+
+    const pushed = await pushStateToCloud(newState);
+    if (!pushed) {
+      return { success: false, error: 'Không thể cập nhật trạng thái phòng lên Cloud.' };
+    }
+
+    return { success: true, completedCount };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Lỗi khi hoàn thành công việc.' };
   }
 };
