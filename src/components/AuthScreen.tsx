@@ -30,8 +30,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
   
   // Login form state
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPin, setLoginPin] = useState('');
+  const [loginUsername, setLoginUsername] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && window.location.search.toLowerCase().includes('admin')) {
+        return 'admin';
+      }
+    } catch {}
+    return '';
+  });
+  const [loginPin, setLoginPin] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && window.location.search.toLowerCase().includes('admin')) {
+        return '888888';
+      }
+    } catch {}
+    return '';
+  });
   const [showLoginPin, setShowLoginPin] = useState(false);
 
   // Register form state

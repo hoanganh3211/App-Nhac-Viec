@@ -512,30 +512,33 @@ export const saveState = (state: AppState): void => {
 /**
  * Đặt lại công việc và điểm số ở máy cục bộ (bảo toàn phòng và thành viên)
  */
-export const resetLocalChoresAndPoints = (): void => {
+export const resetLocalChoresAndPoints = (targetRoomCode?: string): void => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      const resetMembers = (parsed.members || []).map((m: any) => ({
-        ...m,
-        points: 0,
-        streak: 0,
-        lateViolations: 0,
-      }));
-      const resetState: AppState = {
-        ...parsed,
-        members: resetMembers,
-        chores: [],
-        logs: [],
-        transferRequests: [],
-        proposals: [],
-        notifications: [],
-        rebalancePendingTomorrow: false,
-        updatedAt: new Date().toISOString(),
-        version: (parsed.version || 0) + 1,
-      };
-      saveState(resetState);
+      if (!targetRoomCode || parsed.roomCode === targetRoomCode) {
+        const resetMembers = (parsed.members || []).map((m: any) => ({
+          ...m,
+          points: 0,
+          streak: 0,
+          lateViolations: 0,
+        }));
+        const resetState: AppState = {
+          ...parsed,
+          members: resetMembers,
+          chores: [],
+          logs: [],
+          transferRequests: [],
+          proposals: [],
+          notifications: [],
+          rebalancePendingTomorrow: false,
+          updatedAt: new Date().toISOString(),
+          version: (parsed.version || 0) + 1,
+          lastUpdatedBy: 'admin_reset',
+        };
+        saveState(resetState);
+      }
     }
   } catch (e) {
     console.error('Failed to reset local chores and points', e);
@@ -624,6 +627,23 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
   const remoteVer = remote.version || 0;
   const isRemoteNewer = remoteVer >= localVer;
 
+  // 0. Nếu Cloud vừa được Quản trị viên (Admin) đặt lại công việc & điểm số:
+  // Buộc áp dụng trực tiếp bản reset từ Cloud, tuyệt đối KHÔNG phục sinh việc cũ hay điểm cũ từ máy local!
+  if (remote.lastUpdatedBy === 'admin_reset') {
+    return {
+      ...remote,
+      version: Math.max(localVer, remoteVer) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  if (local.lastUpdatedBy === 'admin_reset' && !isRemoteNewer) {
+    return {
+      ...local,
+      version: Math.max(localVer, remoteVer) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
   // 1. Rollover Check: Nếu một bên đã sang ngày mới hơn
   if (remote.lastDateChecked > local.lastDateChecked) {
     return {
@@ -640,43 +660,60 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
     };
   }
 
-  // 2. Cùng ngày: Hợp nhất Chores (Ưu tiên trạng thái đã hoàn thành)
+  // 2. Cùng ngày: Hợp nhất Chores
+  // CHỐNG PHỤC SINH CÔNG VIỆC ĐÃ BỊ XÓA (Zombie Chores Prevention):
+  // Khi remote mới hơn hoặc bằng local, remote là nguồn chân lý cho danh sách công việc.
+  // Việc nào có trong local nhưng không còn trong remote nghĩa là đã bị xóa hoặc hoàn thành -> KHÔNG phục sinh!
   const choreMap = new Map<string, Chore>();
-  const allChoreIds = new Set([
-    ...(local.chores || []).map((c) => c.id),
-    ...(remote.chores || []).map((c) => c.id),
-  ]);
 
-  for (const cid of allChoreIds) {
-    const lChore = (local.chores || []).find((c) => c.id === cid);
-    const rChore = (remote.chores || []).find((c) => c.id === cid);
+  if (isRemoteNewer) {
+    for (const rChore of remote.chores || []) {
+      const lChore = (local.chores || []).find((c) => c.id === rChore.id);
+      if (lChore) {
+        const isCompletedToday = Boolean(lChore.isCompletedToday || rChore.isCompletedToday);
+        const isLatePenalized = Boolean(lChore.isLatePenalized || rChore.isLatePenalized);
+        const completedAt = isCompletedToday ? (lChore.completedAt || rChore.completedAt) : undefined;
+        const completedBy = isCompletedToday ? (lChore.completedBy || rChore.completedBy) : undefined;
+        const redoRequest = rChore.redoRequest || lChore.redoRequest;
 
-    if (lChore && rChore) {
-      // Ưu tiên hoàn thành nếu 1 trong 2 bên đã tick hoàn thành hôm nay
-      const isCompletedToday = Boolean(lChore.isCompletedToday || rChore.isCompletedToday);
-      const isLatePenalized = Boolean(lChore.isLatePenalized || rChore.isLatePenalized);
-      const completedAt = rChore.completedAt || lChore.completedAt;
-      const completedBy = rChore.completedBy || lChore.completedBy;
-      const redoRequest = rChore.redoRequest || lChore.redoRequest;
+        choreMap.set(rChore.id, {
+          ...rChore,
+          isCompletedToday,
+          isLatePenalized,
+          completedAt,
+          completedBy,
+          redoRequest,
+        });
+      } else {
+        choreMap.set(rChore.id, rChore);
+      }
+    }
+  } else {
+    // Local mới hơn (ví dụ người dùng thêm việc lúc offline): local làm chuẩn
+    for (const lChore of local.chores || []) {
+      const rChore = (remote.chores || []).find((c) => c.id === lChore.id);
+      if (rChore) {
+        const isCompletedToday = Boolean(lChore.isCompletedToday || rChore.isCompletedToday);
+        const isLatePenalized = Boolean(lChore.isLatePenalized || rChore.isLatePenalized);
+        const completedAt = isCompletedToday ? (rChore.completedAt || lChore.completedAt) : undefined;
+        const completedBy = isCompletedToday ? (rChore.completedBy || lChore.completedBy) : undefined;
+        const redoRequest = lChore.redoRequest || rChore.redoRequest;
 
-      // Base metadata lấy từ bản mới hơn
-      const base = isRemoteNewer ? rChore : lChore;
-      choreMap.set(cid, {
-        ...base,
-        isCompletedToday,
-        isLatePenalized,
-        completedAt,
-        completedBy,
-        redoRequest,
-      });
-    } else if (rChore) {
-      choreMap.set(cid, rChore);
-    } else if (lChore) {
-      choreMap.set(cid, lChore);
+        choreMap.set(lChore.id, {
+          ...lChore,
+          isCompletedToday,
+          isLatePenalized,
+          completedAt,
+          completedBy,
+          redoRequest,
+        });
+      } else {
+        choreMap.set(lChore.id, lChore);
+      }
     }
   }
 
-  // 3. Hợp nhất Members (Lấy điểm cao nhất để không bao giờ bị mất điểm khi làm việc)
+  // 3. Hợp nhất Members
   const memberMap = new Map<string, Member>();
   const allMemberKeys = new Set([
     ...(local.members || []).map((m) => m.id),
@@ -689,11 +726,15 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
 
     if (lMem && rMem) {
       const base = isRemoteNewer ? rMem : lMem;
+      // Nếu remote mới hơn thì lấy điểm từ remote, nếu bằng thì lấy max để tránh mất điểm khi tick
+      const points = isRemoteNewer ? rMem.points : Math.max(lMem.points, rMem.points);
+      const streak = isRemoteNewer ? rMem.streak : Math.max(lMem.streak || 0, rMem.streak || 0);
+
       memberMap.set(mid, {
         ...base,
-        points: Math.max(lMem.points, rMem.points),
-        streak: Math.max(lMem.streak, rMem.streak),
-        lateViolations: Math.max(lMem.lateViolations || 0, rMem.lateViolations || 0),
+        points,
+        streak,
+        lateViolations: isRemoteNewer ? (rMem.lateViolations || 0) : Math.max(lMem.lateViolations || 0, rMem.lateViolations || 0),
       });
     } else if (rMem) {
       memberMap.set(mid, rMem);
@@ -743,23 +784,25 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
     }
   });
 
-  // Tự động kích hoạt các đề xuất thêm việc cũ còn đang treo (áp dụng luật mới không cần chờ vote)
-  proposalMap.forEach((p) => {
-    if (p.type === 'add_chore' && p.status === 'pending' && p.choreData) {
-      const choreExists = Array.from(choreMap.values()).some(
-        (c) => c.title === p.choreData?.title && c.points === p.choreData?.points
-      );
-      if (!choreExists) {
-        const newChoreId = 'chore_' + (p.id ? p.id.replace('prop_chore_', '') : Date.now());
-        choreMap.set(newChoreId, {
-          ...p.choreData,
-          id: newChoreId,
-          isCompletedToday: false,
-        });
+  // Tự động kích hoạt các đề xuất thêm việc cũ còn đang treo (chỉ khi không phải admin reset)
+  if (remote.lastUpdatedBy !== 'admin_reset' && local.lastUpdatedBy !== 'admin_reset') {
+    proposalMap.forEach((p) => {
+      if (p.type === 'add_chore' && p.status === 'pending' && p.choreData) {
+        const choreExists = Array.from(choreMap.values()).some(
+          (c) => c.title === p.choreData?.title && c.points === p.choreData?.points
+        );
+        if (!choreExists) {
+          const newChoreId = 'chore_' + (p.id ? p.id.replace('prop_chore_', '') : Date.now());
+          choreMap.set(newChoreId, {
+            ...p.choreData,
+            id: newChoreId,
+            isCompletedToday: false,
+          });
+        }
+        p.status = 'approved';
       }
-      p.status = 'approved';
-    }
-  });
+    });
+  }
 
   // 7. Hợp nhất Notifications
   const notifMap = new Map<string, AppNotification>();

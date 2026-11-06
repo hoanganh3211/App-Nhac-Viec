@@ -33,7 +33,8 @@ import {
   CloudRoomData, 
   getSupabaseConfig,
   saveSupabaseConfig,
-  resetAllChoresAndPointsKeepRoomsAndMembers
+  resetAllChoresAndPointsKeepRoomsAndMembers,
+  resetSingleRoomChoresAndPoints
 } from '../utils/supabase';
 import { resetLocalChoresAndPoints } from '../utils/storage';
 
@@ -298,6 +299,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     } catch (e: any) {
       setIsResettingChores(false);
+      showToast(`❌ Lỗi: ${e?.message}`);
+    }
+  };
+
+  // Reset Chores & Points for a single room
+  const handleResetSingleRoom = async (roomCode: string, roomName: string) => {
+    if (
+      !window.confirm(
+        `🧹 XÁC NHẬN ĐẶT LẠI CÔNG VIỆC PHÒNG "${roomName}" (${roomCode}):\n\n` +
+        `- Xóa sạch toàn bộ công việc và lịch sử làm việc trong phòng này.\n` +
+        `- Đặt lại số điểm của tất cả thành viên trong phòng về 0.\n` +
+        `- Giữ nguyên phòng và tất cả thành viên.\n\n` +
+        `Bạn có chắc chắn muốn thực hiện?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const res = await resetSingleRoomChoresAndPoints(roomCode);
+      resetLocalChoresAndPoints(roomCode);
+      if (res.success) {
+        showToast(`✓ Đã xóa việc & reset điểm về 0 cho phòng ${roomName}!`);
+        loadAllData();
+      } else {
+        showToast(`❌ Thao tác thất bại: ${res.error}`);
+      }
+    } catch (e: any) {
       showToast(`❌ Lỗi: ${e?.message}`);
     }
   };
@@ -580,6 +609,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           title="Xem chi tiết"
                         >
                           {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+
+                        <button
+                          onClick={() => handleResetSingleRoom(room.roomCode, room.roomName)}
+                          className="p-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 transition cursor-pointer"
+                          title="Xóa việc & reset điểm phòng này (Bảo lưu phòng & thành viên)"
+                        >
+                          <RotateCcw className="w-4 h-4" />
                         </button>
 
                         <button

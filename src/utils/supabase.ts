@@ -282,6 +282,72 @@ export const resetAllChoresAndPointsKeepRoomsAndMembers = async (): Promise<{
   }
 };
 
+/**
+ * Đặt lại công việc & điểm số cho 1 phòng cụ thể (bảo lưu phòng và thành viên)
+ */
+export const resetSingleRoomChoresAndPoints = async (
+  roomCode: string
+): Promise<{ success: boolean; error?: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Chưa kết nối Supabase Cloud.' };
+
+  try {
+    const cleanCode = roomCode.trim().toUpperCase();
+    const { data: row, error: fetchErr } = await supabase
+      .from('room_states')
+      .select('room_code, state_data')
+      .eq('room_code', cleanCode)
+      .maybeSingle();
+
+    if (fetchErr) {
+      return { success: false, error: fetchErr.message };
+    }
+
+    if (!row) {
+      return { success: false, error: 'Không tìm thấy phòng trên Cloud Database.' };
+    }
+
+    const state = (row.state_data as AppState) || {};
+    const resetMembers = (state.members || []).map((m) => ({
+      ...m,
+      points: 0,
+      streak: 0,
+      lateViolations: 0,
+    }));
+
+    const resetState: AppState = {
+      ...state,
+      members: resetMembers,
+      chores: [],
+      logs: [],
+      transferRequests: [],
+      proposals: [],
+      notifications: [],
+      rebalancePendingTomorrow: false,
+      updatedAt: new Date().toISOString(),
+      version: (state.version || 0) + 1,
+      lastUpdatedBy: 'admin_reset',
+    };
+
+    const { error: updateErr } = await supabase
+      .from('room_states')
+      .update({
+        state_data: resetState,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('room_code', cleanCode);
+
+    if (updateErr) {
+      return { success: false, error: updateErr.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to reset room chores and points:', err);
+    return { success: false, error: err?.message || 'Lỗi khi đặt lại công việc phòng.' };
+  }
+};
+
 export interface CloudRoomData {
   roomCode: string;
   roomName: string;

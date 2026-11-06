@@ -975,6 +975,40 @@ export function App() {
     return true;
   };
 
+  // Tự động chuyển phòng & kéo dữ liệu Cloud mới nhất khi người dùng đã đăng nhập mở link có ?room=XYZ
+  useEffect(() => {
+    if (!authUser || !pendingRoomCode) return;
+
+    let isMounted = true;
+
+    const processPendingRoom = async () => {
+      const targetRoom = pendingRoomCode.trim().toUpperCase();
+
+      if (!hasActiveRoom || state.roomCode !== targetRoom) {
+        await handleJoinRoom(targetRoom, authUser);
+      } else {
+        // Đang ở đúng phòng này -> Kéo dữ liệu đám mây mới nhất
+        await syncWithCloud(targetRoom, true);
+      }
+
+      if (isMounted) {
+        setPendingRoomCode(null);
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('room');
+          url.searchParams.delete('invite');
+          window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ''));
+        } catch {}
+      }
+    };
+
+    processPendingRoom();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authUser, pendingRoomCode, state.roomCode, hasActiveRoom, syncWithCloud, handleJoinRoom]);
+
   // Tạo phòng mới (tự động lấy người tạo là tài khoản đang đăng nhập)
   const handleCreateRoom = async (roomName: string, creatorName: string): Promise<string> => {
     const newCode = `P-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
