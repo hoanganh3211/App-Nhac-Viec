@@ -1985,7 +1985,9 @@ export function App() {
 
         {/* Fairness & Karma Board */}
         <FairnessBoard 
-          members={state.members} 
+          members={state.members.filter(
+            (m) => m.id !== 'usr_admin_root' && m.name?.trim().toLowerCase() !== 'admin'
+          )} 
           onRebalance={handleRebalanceChores}
         />
 

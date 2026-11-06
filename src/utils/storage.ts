@@ -644,6 +644,9 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
   if (remote.lastUpdatedBy === 'admin_reset') {
     return {
       ...remote,
+      members: (remote.members || []).filter(
+        (m) => m.id !== 'usr_admin_root' && m.name?.trim().toLowerCase() !== 'admin'
+      ),
       version: Math.max(localVer, remoteVer) + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -651,6 +654,9 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
   if (local.lastUpdatedBy === 'admin_reset' && !isRemoteNewer) {
     return {
       ...local,
+      members: (local.members || []).filter(
+        (m) => m.id !== 'usr_admin_root' && m.name?.trim().toLowerCase() !== 'admin'
+      ),
       version: Math.max(localVer, remoteVer) + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -660,6 +666,9 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
   if (remote.lastDateChecked > local.lastDateChecked) {
     return {
       ...remote,
+      members: (remote.members || []).filter(
+        (m) => m.id !== 'usr_admin_root' && m.name?.trim().toLowerCase() !== 'admin'
+      ),
       version: Math.max(localVer, remoteVer) + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -667,6 +676,9 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
   if (local.lastDateChecked > remote.lastDateChecked) {
     return {
       ...local,
+      members: (local.members || []).filter(
+        (m) => m.id !== 'usr_admin_root' && m.name?.trim().toLowerCase() !== 'admin'
+      ),
       version: Math.max(localVer, remoteVer) + 1,
       updatedAt: new Date().toISOString(),
     };

@@ -110,6 +110,8 @@ export interface AppNotification {
 
 export interface NotificationSettings {
   enabled: boolean;
+  soundEnabled?: boolean;
+  soundType?: 'chime' | 'bell' | 'marimba' | 'pop';
   todayReminderEnabled: boolean;
   todayReminderTime: string; // "08:00"
   tomorrowPreviewEnabled: boolean;

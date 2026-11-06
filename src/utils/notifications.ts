@@ -1,5 +1,6 @@
 import { Chore, Member, NotificationSettings, AppNotification } from '../types';
 import { getNextAssignee, autoBalanceChores, getTodayDateString, isChoreScheduledToday } from './storage';
+import { playNotificationSound } from './audio';
 
 export const NOTIFICATION_SETTINGS_KEY = 'app_nhac_viec_notification_settings';
 export const NOTIFIED_MILESTONES_KEY = 'app_nhac_viec_notified_milestones';
@@ -8,6 +9,8 @@ export const PUSHED_REMOTE_NOTIFS_KEY = 'app_nhac_viec_pushed_remote_notifs';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   enabled: true,
+  soundEnabled: true,
+  soundType: 'chime',
   todayReminderEnabled: true,
   todayReminderTime: '08:00',
   tomorrowPreviewEnabled: true,
@@ -76,14 +79,29 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
  */
 export const triggerPushNotification = async (
   title: string,
-  options?: NotificationOptions
+  options?: NotificationOptions & { skipSound?: boolean }
 ): Promise<boolean> => {
+  const settings = getNotificationSettings();
+
+  // 1. Luôn phát âm thanh thông báo đẩy nếu được bật trong cài đặt
+  if (settings.enabled && settings.soundEnabled !== false && !options?.skipSound) {
+    playNotificationSound(settings.soundType || 'chime');
+  }
+
+  // 2. Rung xúc giác trên điện thoại di động
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      navigator.vibrate([200, 100, 200]);
+    } catch {}
+  }
+
   if (!isNotificationSupported()) return false;
   if (Notification.permission !== 'granted') return false;
 
   const defaultOptions: NotificationOptions = {
     icon: '/pwa-512x512.svg',
     badge: '/pwa-512x512.svg',
+    silent: false, // Bật âm thanh mặc định của hệ điều hành nếu có
     data: {
       url: typeof window !== 'undefined' ? window.location.href : '/',
     },
@@ -97,6 +115,7 @@ export const triggerPushNotification = async (
       if (reg && reg.showNotification) {
         await reg.showNotification(title, {
           ...defaultOptions,
+          silent: false,
           // Mobile vibration pattern: [vibrate, pause, vibrate, pause, vibrate]
           vibrate: [250, 100, 250, 100, 250] as unknown as number[],
         } as NotificationOptions);
@@ -109,7 +128,7 @@ export const triggerPushNotification = async (
 
   // 2. Fallback to standard Notification constructor
   try {
-    new Notification(title, defaultOptions);
+    new Notification(title, { ...defaultOptions, silent: false });
     return true;
   } catch (err) {
     console.warn('Notification constructor fallback error:', err);

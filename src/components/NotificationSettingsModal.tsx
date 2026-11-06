@@ -22,6 +22,7 @@ import {
   isIOSDevice,
   isStandaloneMode
 } from '../utils/notifications';
+import { playNotificationSound, NotificationSoundType } from '../utils/audio';
 
 interface NotificationSettingsModalProps {
   isOpen: boolean;
@@ -55,7 +56,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
   const handleTestNotification = async () => {
     setTestSent(true);
     await triggerPushNotification('🔔 [Thử nghiệm] Nhắc việc nhà', {
-      body: 'Hệ thống thông báo đẩy đang hoạt động hoàn hảo trên điện thoại của bạn!',
+      body: 'Âm thanh chuông báo và thông báo đẩy đang hoạt động hoàn hảo trên thiết bị của bạn!',
     });
     setTimeout(() => setTestSent(false), 3000);
   };
@@ -193,6 +194,77 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                 />
                 <div className="w-9 h-5 bg-slate-300 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
               </label>
+            </div>
+
+            {/* Âm thanh chuông báo */}
+            <div className="p-3 bg-white rounded-2xl border border-slate-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                    <Volume2 className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-800">Hiệu ứng âm thanh chuông</div>
+                    <div className="text-[10px] text-slate-400">Phát chuông thông báo khi có việc hoặc nhắc việc</div>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.soundEnabled !== false}
+                    onChange={(e) =>
+                      setSettings({ ...settings, soundEnabled: e.target.checked })
+                    }
+                    className="sr-only peer"
+                  />
+                  <div className="w-8 h-4 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
+              {settings.soundEnabled !== false && (
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-600">Giai điệu chuông:</span>
+                    <button
+                      type="button"
+                      onClick={() => playNotificationSound(settings.soundType || 'chime')}
+                      className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold text-[11px] rounded-lg shadow-2xs flex items-center space-x-1 transition cursor-pointer"
+                    >
+                      <Volume2 className="w-3 h-3 text-amber-600" />
+                      <span>Nghe thử 🔊</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: 'chime', label: '🔔 Pha lê', desc: 'Trong trẻo, hiện đại' },
+                      { id: 'bell', label: '🛎️ Chuông ngân', desc: 'Ding-dong ấm áp' },
+                      { id: 'marimba', label: '🪵 Gõ mộc', desc: 'Vui tươi, nhẹ nhàng' },
+                      { id: 'pop', label: '🫧 Bóng nước', desc: 'Nhỏ gọn, độc đáo' },
+                    ].map((sound) => {
+                      const isSelected = (settings.soundType || 'chime') === sound.id;
+                      return (
+                        <button
+                          key={sound.id}
+                          type="button"
+                          onClick={() => {
+                            setSettings({ ...settings, soundType: sound.id as NotificationSoundType });
+                            playNotificationSound(sound.id as NotificationSoundType);
+                          }}
+                          className={`p-2 rounded-xl text-left border transition flex flex-col cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-50 border-indigo-400 text-indigo-900 shadow-2xs'
+                              : 'bg-slate-50/60 hover:bg-slate-100 border-slate-200/80 text-slate-700'
+                          }`}
+                        >
+                          <span className="text-xs font-bold">{sound.label}</span>
+                          <span className="text-[10px] text-slate-400">{sound.desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 1. Nhắc việc hôm nay */}

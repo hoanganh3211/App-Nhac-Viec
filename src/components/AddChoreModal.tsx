@@ -445,11 +445,13 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                 <option value="auto">
                   🤖 Tự động chia đều công bằng (Khuyên dùng)
                 </option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.avatar} {m.name} ({m.points}đ)
-                  </option>
-                ))}
+                {members
+                  .filter((m) => m.id !== 'usr_admin_root' && m.name?.trim().toLowerCase() !== 'admin')
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.avatar} {m.name} ({m.points}đ)
+                    </option>
+                  ))}
               </select>
             </div>
           </div>

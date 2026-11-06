@@ -209,10 +209,17 @@ export const RoomModal: React.FC<RoomModalProps> = ({
               <div className="flex items-center justify-between px-1 text-[11px] text-slate-500">
                 <span className="flex items-center space-x-1">
                   <Users className="w-3.5 h-3.5" />
-                  <span>Thành viên ({state.members.length}):</span>
+                  <span>
+                    Thành viên (
+                    {state.members.filter((m) => m.id !== 'usr_admin_root' && m.name?.trim().toLowerCase() !== 'admin').length}
+                    ):
+                  </span>
                 </span>
                 <span className="font-semibold text-slate-700 truncate max-w-[170px]">
-                  {state.members.map((m) => m.name).join(', ')}
+                  {state.members
+                    .filter((m) => m.id !== 'usr_admin_root' && m.name?.trim().toLowerCase() !== 'admin')
+                    .map((m) => m.name)
+                    .join(', ')}
                 </span>
               </div>
 
