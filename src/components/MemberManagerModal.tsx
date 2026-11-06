@@ -28,8 +28,12 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
   const [avatar, setAvatar] = useState('👨‍💻');
   const [zaloName, setZaloName] = useState('');
 
-  const avgPoints = members.length > 0
-    ? Math.max(0, Math.round(members.reduce((sum, m) => sum + m.points, 0) / members.length))
+  const realMembers = members.filter(
+    (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
+  );
+
+  const avgPoints = realMembers.length > 0
+    ? Math.max(0, Math.round(realMembers.reduce((sum, m) => sum + m.points, 0) / realMembers.length))
     : 0;
 
   if (!isOpen) return null;
@@ -94,11 +98,11 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
           {/* Members list */}
           <div className="space-y-2">
             <div className="text-xs font-semibold text-slate-600 flex items-center justify-between">
-              <span>Danh sách người ở chung ({members.length} người):</span>
+              <span>Danh sách người ở chung ({realMembers.length} người):</span>
             </div>
 
             <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-2xl overflow-hidden bg-slate-50/50">
-              {members.map((member) => (
+              {realMembers.map((member) => (
                 <div
                   key={member.id}
                   className="p-3 flex items-center justify-between hover:bg-white transition"
@@ -113,7 +117,7 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
                     </div>
                   </div>
 
-                  {members.length > 1 && (
+                  {realMembers.length > 1 && (
                     <button
                       onClick={() => {
                         const confirmed = window.confirm(
@@ -133,7 +137,7 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
               ))}
             </div>
 
-            {members.length > 1 && (
+            {realMembers.length > 1 && (
               <p className="text-[10px] text-slate-400 italic">
                 *Thao tác xóa thành viên cần được hơn nửa thành viên trong phòng biểu quyết đồng ý.
               </p>

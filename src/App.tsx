@@ -185,34 +185,37 @@ export function App() {
     }, 3500);
   }, []);
 
-  // Đảm bảo tài khoản thường đã đăng nhập luôn tự động có trong danh sách thành viên phòng
-  // QUAN TRỌNG: Quản trị viên (Admin) chỉ là người kiểm tra/giám sát, TUYỆT ĐỐI KHÔNG thêm Admin làm thành viên phòng!
+  // 1. LUÔN LUÔN quét và loại bỏ sạch tài khoản Admin khỏi danh sách thành viên phòng (Áp dụng cho TẤT CẢ mọi người)
   useEffect(() => {
-    // 1. Nếu là Admin: luôn quét và loại bỏ sạch tài khoản Admin khỏi danh sách thành viên phòng
-    if (isAdmin) {
-      const hasAdmin = state.members.some(
-        (m) => m.id === 'usr_admin_root' || m.name.toLowerCase() === 'admin'
+    const hasAdmin = (state.members || []).some(
+      (m) => m.id === 'usr_admin_root' || m.name.toLowerCase() === 'admin'
+    );
+    if (hasAdmin) {
+      const cleanedMembers = (state.members || []).filter(
+        (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
       );
-      if (hasAdmin) {
-        const cleanedMembers = state.members.filter(
-          (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
-        );
-        const cleanedChores = state.chores.map((c) => {
-          if ((c.assignedTo === 'usr_admin_root' || c.assignedTo === 'admin') && cleanedMembers.length > 0) {
-            return { ...c, assignedTo: cleanedMembers[0].id };
-          }
-          return c;
-        });
-        setState((prev) => ({
-          ...prev,
-          members: cleanedMembers,
-          chores: cleanedChores,
-        }));
-      }
-      return;
+      const cleanedChores = (state.chores || []).map((c) => {
+        if ((c.assignedTo === 'usr_admin_root' || c.assignedTo === 'admin') && cleanedMembers.length > 0) {
+          return { ...c, assignedTo: cleanedMembers[0].id };
+        }
+        return c;
+      });
+      const newState: AppState = {
+        ...state,
+        members: cleanedMembers,
+        chores: cleanedChores,
+      };
+      setState(newState);
+      saveState(newState);
+      pushStateToCloud(newState).catch(console.error);
     }
+  }, [state.members, state.chores]);
 
-    // 2. Nếu là người dùng thường: thêm vào phòng nếu chưa có
+  // 2. Nếu là người dùng thường: thêm vào phòng nếu chưa có (TUYỆT ĐỐI KHÔNG thêm Admin)
+  useEffect(() => {
+    if (isAdmin) return; // Admin tuyệt đối không bao giờ được thêm vào members
+    if (authUser && (authUser.role === 'admin' || authUser.username.toLowerCase() === 'admin')) return;
+
     if (hasActiveRoom && authUser && state.members.length > 0 && !currentMember) {
       const alreadyIn = state.members.some(
         (m) => m.id === authUser.id || m.name.toLowerCase() === authUser.username.toLowerCase()
@@ -306,7 +309,7 @@ export function App() {
 
   // Đảm bảo toàn bộ công việc ngày 7/11 của phòng P-VZOX là công việc mới chưa làm (tính bắt đầu từ mai sau ngày 6/11)
   useEffect(() => {
-    const key = 'pvzox_cloud_fresh_start_7_11_v1';
+    const key = 'pvzox_cloud_fresh_start_7_11_v2';
     if (!localStorage.getItem(key)) {
       localStorage.setItem(key, 'true');
       startNewDayChoresForRoom('P-VZOX')
@@ -322,7 +325,7 @@ export function App() {
   // Đảm bảo tại phòng P-VZOX hôm nay (7/11) các công việc ở trạng thái chưa hoàn thành để mọi người làm
   useEffect(() => {
     if (!hasActiveRoom || state.roomCode?.toUpperCase() !== 'P-VZOX') return;
-    const key = 'pvzox_local_fresh_start_2026-11-07_v1';
+    const key = 'pvzox_local_fresh_start_2026-11-07_v2';
     if (localStorage.getItem(key)) return;
 
     const hasAnyCompleted = (state.chores || []).some((c) => c.isCompletedToday);

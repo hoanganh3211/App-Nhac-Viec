@@ -8,14 +8,17 @@ interface FairnessBoardProps {
 }
 
 export const FairnessBoard: React.FC<FairnessBoardProps> = ({ members, onRebalance }) => {
-  const sortedMembers = [...members].sort((a, b) => b.points - a.points);
-  const maxPoints = Math.max(...members.map((m) => m.points), 1);
-  const totalPoints = members.reduce((sum, m) => sum + m.points, 0);
+  const realMembers = members.filter(
+    (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
+  );
+  const sortedMembers = [...realMembers].sort((a, b) => b.points - a.points);
+  const maxPoints = Math.max(...realMembers.map((m) => m.points), 1);
+  const totalPoints = realMembers.reduce((sum, m) => sum + m.points, 0);
 
-  const averagePoints = totalPoints / (members.length || 1);
+  const averagePoints = totalPoints / (realMembers.length || 1);
   const variance =
-    members.reduce((acc, m) => acc + Math.pow(m.points - averagePoints, 2), 0) /
-    (members.length || 1);
+    realMembers.reduce((acc, m) => acc + Math.pow(m.points - averagePoints, 2), 0) /
+    (realMembers.length || 1);
   const stdDev = Math.sqrt(variance);
   const fairnessRatio =
     averagePoints === 0
