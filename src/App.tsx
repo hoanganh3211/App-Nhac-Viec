@@ -184,9 +184,40 @@ export function App() {
     }, 3500);
   }, []);
 
-  // Đảm bảo tài khoản đã đăng nhập luôn tự động có trong danh sách thành viên phòng
+  // Đảm bảo tài khoản thường đã đăng nhập luôn tự động có trong danh sách thành viên phòng
+  // QUAN TRỌNG: Quản trị viên (Admin) chỉ là người kiểm tra/giám sát, TUYỆT ĐỐI KHÔNG thêm Admin làm thành viên phòng!
   useEffect(() => {
+    // 1. Nếu là Admin: luôn quét và loại bỏ sạch tài khoản Admin khỏi danh sách thành viên phòng
+    if (isAdmin) {
+      const hasAdmin = state.members.some(
+        (m) => m.id === 'usr_admin_root' || m.name.toLowerCase() === 'admin'
+      );
+      if (hasAdmin) {
+        const cleanedMembers = state.members.filter(
+          (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
+        );
+        const cleanedChores = state.chores.map((c) => {
+          if ((c.assignedTo === 'usr_admin_root' || c.assignedTo === 'admin') && cleanedMembers.length > 0) {
+            return { ...c, assignedTo: cleanedMembers[0].id };
+          }
+          return c;
+        });
+        setState((prev) => ({
+          ...prev,
+          members: cleanedMembers,
+          chores: cleanedChores,
+        }));
+      }
+      return;
+    }
+
+    // 2. Nếu là người dùng thường: thêm vào phòng nếu chưa có
     if (hasActiveRoom && authUser && state.members.length > 0 && !currentMember) {
+      const alreadyIn = state.members.some(
+        (m) => m.id === authUser.id || m.name.toLowerCase() === authUser.username.toLowerCase()
+      );
+      if (alreadyIn) return;
+
       const avgPoints = Math.max(
         0,
         Math.round(state.members.reduce((sum, m) => sum + m.points, 0) / state.members.length)
@@ -206,7 +237,7 @@ export function App() {
         members: [...prev.members, newMember],
       }));
     }
-  }, [hasActiveRoom, authUser, currentMember, state.members]);
+  }, [hasActiveRoom, authUser, currentMember, state.members, isAdmin]);
 
   // Đồng bộ hai chiều với Cloud Supabase (kéo dữ liệu mới nhất & hợp nhất thông minh)
   const syncWithCloud = useCallback(async (targetRoomCode?: string, forceToast = false) => {
@@ -345,7 +376,9 @@ export function App() {
 
     const newState: AppState = {
       ...state,
-      members: updatedMembers,
+      members: updatedMembers.filter(
+        (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
+      ),
       chores: updatedChores,
       logs: [...newLogs, ...(state.logs || [])].slice(0, 100),
       lastDateChecked: todayStr,

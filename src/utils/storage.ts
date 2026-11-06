@@ -40,7 +40,10 @@ export const autoBalanceChores = (
     excludedChoreIds?: string[];
   }
 ): Chore[] => {
-  if (!members.length || !chores.length) return chores;
+  const validMembers = (members || []).filter(
+    (m) => m.id !== 'usr_admin_root' && m.name?.toLowerCase() !== 'admin'
+  );
+  if (!validMembers.length || !chores.length) return chores;
 
   const preserveCompleted = options?.preserveCompleted ?? true;
   const excludedChoreIds = new Set(options?.excludedChoreIds || []);
@@ -71,7 +74,7 @@ export const autoBalanceChores = (
     }
   > = {};
 
-  members.forEach((m) => {
+  validMembers.forEach((m) => {
     memberLoad[m.id] = {
       basePoints: m.points || 0,
       assignedPoints: 0,
@@ -88,8 +91,8 @@ export const autoBalanceChores = (
   }
 
   // Kiểm tra xem tất cả thành viên có bằng điểm tích lũy nhau không (ví dụ cùng 0đ)
-  const firstBase = members[0].points || 0;
-  const allEqualBasePoints = members.every((m) => (m.points || 0) === firstBase);
+  const firstBase = validMembers[0].points || 0;
+  const allEqualBasePoints = validMembers.every((m) => (m.points || 0) === firstBase);
 
   // 3. Sắp xếp các việc cần chia từ nặng nhất đến nhẹ nhất (4đ -> 3đ -> 2đ -> 1đ)
   const sortedToBalance = [...choresToBalance].sort((a, b) => {
@@ -104,7 +107,7 @@ export const autoBalanceChores = (
 
   // 4. Lần lượt phân bổ từng công việc cho người tối ưu nhất
   const newlyAssignedChores = sortedToBalance.map((chore) => {
-    const sortedCandidates = [...members].sort((a, b) => {
+    const sortedCandidates = [...validMembers].sort((a, b) => {
       const loadA = memberLoad[a.id];
       const loadB = memberLoad[b.id];
 
@@ -126,17 +129,17 @@ export const autoBalanceChores = (
 
       // Tiêu chí 4: Khi tất cả đều bằng nhau (như khi mọi người cùng 0đ và 0 việc):
       // Xoay vòng luân phiên đều đặn qua các thành viên theo lượt
-      const indexA = members.findIndex((m) => m.id === a.id);
-      const indexB = members.findIndex((m) => m.id === b.id);
-      const relA = (indexA - tieBreakerOffset + members.length) % members.length;
-      const relB = (indexB - tieBreakerOffset + members.length) % members.length;
+      const indexA = validMembers.findIndex((m) => m.id === a.id);
+      const indexB = validMembers.findIndex((m) => m.id === b.id);
+      const relA = (indexA - tieBreakerOffset + validMembers.length) % validMembers.length;
+      const relB = (indexB - tieBreakerOffset + validMembers.length) % validMembers.length;
       return relA - relB;
     });
 
     const chosen = sortedCandidates[0];
     memberLoad[chosen.id].assignedPoints += chore.points;
     memberLoad[chosen.id].choreCount += 1;
-    tieBreakerOffset = (tieBreakerOffset + 1) % members.length;
+    tieBreakerOffset = (tieBreakerOffset + 1) % validMembers.length;
 
     return {
       ...chore,
@@ -281,19 +284,22 @@ export const getNextAssignee = (
   rule: RotationRule,
   members: Member[]
 ): string => {
-  if (members.length === 0) return '';
+  const realMembers = (members || []).filter(
+    (m) => m.id !== 'usr_admin_root' && m.name?.toLowerCase() !== 'admin'
+  );
+  if (realMembers.length === 0) return '';
   if (rule === 'fixed') return currentAssigneeId;
 
   if (rule === 'least-points') {
-    const sorted = [...members].sort((a, b) => a.points - b.points);
+    const sorted = [...realMembers].sort((a, b) => a.points - b.points);
     return sorted[0].id;
   }
 
   // Round-robin
-  const currentIndex = members.findIndex((m) => m.id === currentAssigneeId);
-  if (currentIndex === -1) return members[0].id;
-  const nextIndex = (currentIndex + 1) % members.length;
-  return members[nextIndex].id;
+  const currentIndex = realMembers.findIndex((m) => m.id === currentAssigneeId);
+  if (currentIndex === -1) return realMembers[0].id;
+  const nextIndex = (currentIndex + 1) % realMembers.length;
+  return realMembers[nextIndex].id;
 };
 
 export const DAYS_OF_WEEK = [
@@ -464,10 +470,12 @@ export const loadState = (): AppState => {
     }
 
     if (parsed.members) {
-      parsed.members = parsed.members.map((m: any) => ({
-        ...m,
-        lateViolations: m.lateViolations ?? 0,
-      }));
+      parsed.members = parsed.members
+        .filter((m: any) => m.id !== 'usr_admin_root' && m.name?.toLowerCase() !== 'admin')
+        .map((m: any) => ({
+          ...m,
+          lateViolations: m.lateViolations ?? 0,
+        }));
     }
 
     // Tự động kích hoạt các đề xuất thêm việc cũ còn đang chờ duyệt
@@ -503,7 +511,11 @@ export const loadState = (): AppState => {
 
 export const saveState = (state: AppState): void => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const cleanMembers = (state.members || []).filter(
+      (m) => m.id !== 'usr_admin_root' && m.name?.toLowerCase() !== 'admin'
+    );
+    const cleanState = { ...state, members: cleanMembers };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanState));
   } catch (e) {
     console.error('Failed to save state to localStorage', e);
   }
@@ -828,7 +840,9 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
   return {
     roomName: isRemoteNewer ? remote.roomName : local.roomName,
     roomCode: remote.roomCode,
-    members: Array.from(memberMap.values()),
+    members: Array.from(memberMap.values()).filter(
+      (m) => m.id !== 'usr_admin_root' && m.name?.toLowerCase() !== 'admin'
+    ),
     chores: Array.from(choreMap.values()),
     logs: mergedLogs,
     transferRequests: Array.from(transferMap.values()),

@@ -64,10 +64,19 @@ export const pushStateToCloud = async (state: AppState): Promise<boolean> => {
   if (!supabase) return false;
 
   try {
+    // Luôn lọc sạch tài khoản Quản trị viên (Admin) khỏi danh sách thành viên trước khi đẩy lên Cloud
+    const cleanMembers = (state.members || []).filter(
+      (m) => m.id !== 'usr_admin_root' && m.name?.toLowerCase() !== 'admin'
+    );
+    const cleanState: AppState = {
+      ...state,
+      members: cleanMembers,
+    };
+
     const { error } = await supabase.from('room_states').upsert(
       {
-        room_code: state.roomCode,
-        state_data: state,
+        room_code: cleanState.roomCode,
+        state_data: cleanState,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'room_code' }
@@ -99,7 +108,13 @@ export const fetchStateFromCloud = async (roomCode: string): Promise<AppState | 
     if (error || !data) {
       return null;
     }
-    return data.state_data as AppState;
+    const state = data.state_data as AppState;
+    if (state && Array.isArray(state.members)) {
+      state.members = state.members.filter(
+        (m) => m.id !== 'usr_admin_root' && m.name?.toLowerCase() !== 'admin'
+      );
+    }
+    return state;
   } catch (err) {
     console.error('Failed to fetch from Supabase', err);
     return null;
@@ -375,13 +390,16 @@ export const fetchAllRoomsForAdmin = async (): Promise<CloudRoomData[]> => {
 
     return data.map((row: any) => {
       const state = (row.state_data as AppState) || {};
+      const cleanMembers = (state.members || []).filter(
+        (m: any) => m.id !== 'usr_admin_root' && m.name?.toLowerCase() !== 'admin'
+      );
       return {
         roomCode: row.room_code,
         roomName: state.roomName || row.room_code,
-        memberCount: Array.isArray(state.members) ? state.members.length : 0,
+        memberCount: cleanMembers.length,
         choreCount: Array.isArray(state.chores) ? state.chores.length : 0,
         updatedAt: row.updated_at || state.lastDateChecked || new Date().toISOString(),
-        members: state.members || [],
+        members: cleanMembers,
         chores: state.chores || [],
       };
     });
