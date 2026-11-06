@@ -9,7 +9,16 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { AppState, Chore, Member, TransferRequest, ChoreLog, RoomProposal, AppNotification } from './types';
-import { loadState, saveState, getTodayDateString, autoBalanceChores, handleDayRollover, isChoreScheduledToday } from './utils/storage';
+import { 
+  loadState, 
+  saveState, 
+  getTodayDateString, 
+  autoBalanceChores, 
+  handleDayRollover, 
+  isChoreScheduledToday,
+  getCanonicalStateSignature,
+  mergeStates
+} from './utils/storage';
 import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
   getNotificationPermission, 
@@ -98,8 +107,27 @@ export function App() {
   const currentMemberRef = useRef(currentMember);
   currentMemberRef.current = currentMember;
 
+  // Unique client instance ID (chống vòng lặp realtime echo)
+  const [clientId] = useState<string>(() => {
+    try {
+      let cid = sessionStorage.getItem('app_nhac_viec_client_id');
+      if (!cid) {
+        cid = 'client_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+        sessionStorage.setItem('app_nhac_viec_client_id', cid);
+      }
+      return cid;
+    } catch {
+      return 'client_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+    }
+  });
+  const clientIdRef = useRef<string>(clientId);
+  clientIdRef.current = clientId;
+
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'connected' | 'error' | 'offline'>('idle');
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const isCloudInitializedRef = useRef<boolean>(false);
   const isRemoteUpdateRef = useRef(false);
-  const lastPushedJsonRef = useRef<string>('');
+  const lastCanonicalSigRef = useRef<string>('');
 
   const [activeTab, setActiveTab] = useState<'my_chores' | 'today_all' | 'all' | 'pending' | 'completed'>('my_chores');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -139,12 +167,12 @@ export function App() {
     return unreadNotifs + pendingVotes;
   }, [state.notifications, state.proposals, currentUserId]);
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
     }, 3500);
-  };
+  }, []);
 
   // Đảm bảo tài khoản đã đăng nhập luôn tự động có trong danh sách thành viên phòng
   useEffect(() => {
@@ -170,28 +198,123 @@ export function App() {
     }
   }, [hasActiveRoom, authUser, currentMember, state.members]);
 
-  // Persist state to localStorage and push silently to Cloud (có cơ chế chống lặp vô hạn)
+  // Đồng bộ hai chiều với Cloud Supabase (kéo dữ liệu mới nhất & hợp nhất thông minh)
+  const syncWithCloud = useCallback(async (targetRoomCode?: string, forceToast = false) => {
+    const code = (targetRoomCode || stateRef.current.roomCode || '').trim().toUpperCase();
+    if (!code) return;
+    if (code === 'PHONG-302' && !hasActiveRoom) return;
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setSyncStatus('offline');
+      isCloudInitializedRef.current = true;
+      return;
+    }
+
+    setSyncStatus('syncing');
+    try {
+      const cloudState = await fetchStateFromCloud(code);
+      if (cloudState) {
+        // Hợp nhất dữ liệu giữa local và cloud
+        const merged = mergeStates(stateRef.current, cloudState);
+        const mergedSig = getCanonicalStateSignature(merged);
+        const cloudSig = getCanonicalStateSignature(cloudState);
+
+        lastCanonicalSigRef.current = mergedSig;
+        isRemoteUpdateRef.current = true;
+        setState(merged);
+        saveState(merged);
+
+        // Nếu bản local có dữ liệu tiến bộ hơn (ví dụ thao tác offline), đẩy lên cloud ngay
+        if (mergedSig !== cloudSig) {
+          const pushPayload: AppState = {
+            ...merged,
+            lastUpdatedBy: clientIdRef.current,
+            updatedAt: new Date().toISOString(),
+            version: (merged.version || 0) + 1,
+          };
+          await pushStateToCloud(pushPayload);
+        }
+      } else {
+        // Phòng mới tạo chưa có trên cloud, đẩy bản hiện tại lên
+        const pushPayload: AppState = {
+          ...stateRef.current,
+          lastUpdatedBy: clientIdRef.current,
+          updatedAt: new Date().toISOString(),
+          version: (stateRef.current.version || 0) + 1,
+        };
+        await pushStateToCloud(pushPayload);
+      }
+
+      setSyncStatus('connected');
+      setLastSyncTime(new Date());
+      isCloudInitializedRef.current = true;
+      if (forceToast) {
+        showToast('✅ Đã đồng bộ dữ liệu đám mây mới nhất!');
+      }
+    } catch (err) {
+      console.error('Failed to sync with cloud:', err);
+      setSyncStatus('error');
+      isCloudInitializedRef.current = true;
+      if (forceToast) {
+        showToast('⚠️ Không thể kết nối Cloud. Dữ liệu đang được lưu Offline.');
+      }
+    }
+  }, [hasActiveRoom, showToast]);
+
+  // Khi ứng dụng khởi động và có phòng hoạt động: Bắt buộc kéo từ Cloud trước khi cho phép auto-push
   useEffect(() => {
-    if (!hasActiveRoom) return;
+    if (hasActiveRoom && authUser && state.roomCode && state.roomCode !== 'PHONG-302') {
+      syncWithCloud(state.roomCode);
+    } else {
+      isCloudInitializedRef.current = true;
+    }
+  }, [hasActiveRoom, authUser, syncWithCloud]);
+
+  // Tự động đẩy thay đổi lên Cloud (debounce 250ms & chỉ đẩy khi khác chữ ký dữ liệu)
+  useEffect(() => {
+    if (!hasActiveRoom || !authUser) return;
     saveState(state);
 
-    const currentJson = JSON.stringify(state);
+    // Không push khi chưa hoàn thành initial sync từ cloud để tránh ghi đè dữ liệu cũ
+    if (!isCloudInitializedRef.current) return;
+
     if (isRemoteUpdateRef.current) {
       isRemoteUpdateRef.current = false;
       return;
     }
 
-    if (currentJson === lastPushedJsonRef.current) {
+    const currentSig = getCanonicalStateSignature(state);
+    if (currentSig === lastCanonicalSigRef.current) {
       return;
     }
 
-    lastPushedJsonRef.current = currentJson;
-    pushStateToCloud(state);
-  }, [state, hasActiveRoom]);
+    lastCanonicalSigRef.current = currentSig;
 
-  // Realtime subscription via Supabase if configured by dev (có lọc dữ liệu chống giật màn hình)
+    const timer = setTimeout(async () => {
+      setSyncStatus('syncing');
+      const pushPayload: AppState = {
+        ...stateRef.current,
+        lastUpdatedBy: clientIdRef.current,
+        updatedAt: new Date().toISOString(),
+        version: (stateRef.current.version || 0) + 1,
+      };
+
+      const success = await pushStateToCloud(pushPayload);
+      if (success) {
+        setSyncStatus('connected');
+        setLastSyncTime(new Date());
+      } else {
+        setSyncStatus('error');
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [state, hasActiveRoom, authUser]);
+
+  // Realtime subscription via Supabase (Lắng nghe mọi thay đổi từ phòng và hợp nhất ngay)
   useEffect(() => {
-    if (!hasActiveRoom || !authUser) return;
+    if (!hasActiveRoom || !authUser || !state.roomCode || state.roomCode === 'PHONG-302') return;
     const supabase = getSupabaseClient();
     if (!supabase) return;
 
@@ -208,33 +331,93 @@ export function App() {
         (payload) => {
           if (!currentUserIdRef.current) return;
           if (payload.new && (payload.new as any).state_data) {
-            const newState = (payload.new as any).state_data as AppState;
-            const newJson = JSON.stringify(newState);
-            if (newJson === JSON.stringify(stateRef.current) || newJson === lastPushedJsonRef.current) {
+            const incomingState = (payload.new as any).state_data as AppState;
+
+            // Bỏ qua echo nếu sự kiện do chính client này đẩy lên
+            if (incomingState.lastUpdatedBy === clientIdRef.current) {
               return;
             }
+
+            const incomingSig = getCanonicalStateSignature(incomingState);
+            const currentSig = getCanonicalStateSignature(stateRef.current);
+            if (incomingSig === currentSig || incomingSig === lastCanonicalSigRef.current) {
+              return;
+            }
+
+            // Hợp nhất thông minh với trạng thái hiện tại
+            const merged = mergeStates(stateRef.current, incomingState);
+            const mergedSig = getCanonicalStateSignature(merged);
+
+            lastCanonicalSigRef.current = mergedSig;
             isRemoteUpdateRef.current = true;
-            lastPushedJsonRef.current = newJson;
 
             // Đẩy thông báo tức thì ra màn hình khóa khi bạn cùng phòng hoàn thành việc/nhượng việc/biểu quyết
             if (currentUserIdRef.current) {
               checkAndPushRemoteNotifications(
                 stateRef.current.notifications || [],
-                newState.notifications || [],
+                merged.notifications || [],
                 currentUserIdRef.current
               );
             }
 
-            setState(newState);
+            setState(merged);
+            saveState(merged);
+            setSyncStatus('connected');
+            setLastSyncTime(new Date());
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setSyncStatus('connected');
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setSyncStatus('offline');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, [state.roomCode, hasActiveRoom, authUser]);
+
+  // Tự động kéo dữ liệu khi mở lại màn hình điện thoại, kết nối lại mạng hoặc heartbeat
+  useEffect(() => {
+    if (!hasActiveRoom || !authUser || !state.roomCode || state.roomCode === 'PHONG-302') return;
+
+    const handleResume = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        syncWithCloud(stateRef.current.roomCode);
+      }
+    };
+
+    const handleOnline = () => {
+      setSyncStatus('syncing');
+      syncWithCloud(stateRef.current.roomCode);
+    };
+
+    const handleOffline = () => {
+      setSyncStatus('offline');
+    };
+
+    window.addEventListener('focus', handleResume);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleResume);
+
+    const heartbeatInterval = setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        syncWithCloud(stateRef.current.roomCode);
+      }
+    }, 25000);
+
+    return () => {
+      window.removeEventListener('focus', handleResume);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleResume);
+      clearInterval(heartbeatInterval);
+    };
+  }, [hasActiveRoom, authUser, state.roomCode, syncWithCloud]);
 
   // Targeted chores for current user (hôm nay có lịch)
   const myChores = useMemo(() => {
@@ -772,14 +955,21 @@ export function App() {
     const finalState: AppState = {
       ...targetState,
       members: updatedMembers,
+      lastUpdatedBy: clientIdRef.current,
+      updatedAt: new Date().toISOString(),
+      version: (targetState.version || 0) + 1,
     };
+
+    lastCanonicalSigRef.current = getCanonicalStateSignature(finalState);
+    isCloudInitializedRef.current = true;
+    isRemoteUpdateRef.current = true;
 
     setState(finalState);
     setHasActiveRoom(true);
     localStorage.setItem(HAS_ROOM_KEY, 'true');
 
     // Silent push updated room with new member to Supabase
-    pushStateToCloud(finalState);
+    await pushStateToCloud(finalState);
 
     showToast(`🎉 Chào mừng ${activeUser?.username || ''} đã vào phòng "${finalState.roomName}"!`);
     return true;
@@ -815,7 +1005,14 @@ export function App() {
       transferRequests: [],
       proposals: [],
       notifications: [],
+      lastUpdatedBy: clientIdRef.current,
+      updatedAt: new Date().toISOString(),
+      version: 1,
     };
+
+    lastCanonicalSigRef.current = getCanonicalStateSignature(newRoomState);
+    isCloudInitializedRef.current = true;
+    isRemoteUpdateRef.current = true;
 
     setState(newRoomState);
     setHasActiveRoom(true);
@@ -870,6 +1067,7 @@ export function App() {
       setHasActiveRoom(true);
       localStorage.setItem(HAS_ROOM_KEY, 'true');
       showToast(`Chào mừng ${user.username} trở lại phòng "${state.roomName}"!`);
+      syncWithCloud(state.roomCode);
     } else {
       setHasActiveRoom(false);
       localStorage.removeItem(HAS_ROOM_KEY);
@@ -1534,6 +1732,8 @@ export function App() {
         roomName={state.roomName}
         uncompletedCount={todayUncompletedCount}
         unreadNotificationsCount={unreadNotificationsCount}
+        syncStatus={syncStatus}
+        onManualSync={() => syncWithCloud(state.roomCode, true)}
         onOpenAddChore={() => setIsAddChoreOpen(true)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenMenu={() => setIsMenuOpen(true)}
@@ -1724,6 +1924,9 @@ export function App() {
         roomCode={state.roomCode}
         currentMember={currentMember}
         isAdmin={isAdmin}
+        syncStatus={syncStatus}
+        lastSyncTime={lastSyncTime}
+        onManualSync={() => syncWithCloud(state.roomCode, true)}
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
         onOpenChoreManager={() => setIsChoreManagerOpen(true)}

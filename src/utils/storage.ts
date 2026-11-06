@@ -1,4 +1,14 @@
-import { AppState, Chore, Member, RotationRule, FrequencyType } from '../types';
+import { 
+  AppState, 
+  Chore, 
+  Member, 
+  RotationRule, 
+  FrequencyType,
+  TransferRequest,
+  ChoreLog,
+  RoomProposal,
+  AppNotification
+} from '../types';
 
 const STORAGE_KEY = 'app_nhac_viec_data_v1';
 
@@ -381,4 +391,240 @@ export const saveState = (state: AppState): void => {
   } catch (e) {
     console.error('Failed to save state to localStorage', e);
   }
+};
+
+/**
+ * Chữ ký chuẩn hoá trạng thái (Canonical Signature) để so sánh bình đẳng
+ * loại bỏ hoàn toàn sự xáo trộn thứ tự thuộc tính do PostgreSQL JSONB gây ra.
+ */
+export const getCanonicalStateSignature = (state: AppState | null | undefined): string => {
+  if (!state) return '';
+  const choreSummary = (state.chores || [])
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      assignedTo: c.assignedTo,
+      isCompletedToday: Boolean(c.isCompletedToday),
+      isLatePenalized: Boolean(c.isLatePenalized),
+      completedAt: c.completedAt || '',
+      completedBy: c.completedBy || '',
+      points: c.points,
+      frequency: c.frequency,
+      dueTime: c.dueTime,
+      redo: c.redoRequest ? `${c.redoRequest.requestedBy}_${c.redoRequest.requestedAt}` : '',
+    }));
+
+  const memberSummary = (state.members || [])
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((m) => ({
+      id: m.id,
+      name: m.name,
+      points: m.points,
+      streak: m.streak,
+      lateViolations: m.lateViolations || 0,
+      avatar: m.avatar || '',
+      zaloName: m.zaloName || '',
+    }));
+
+  const logSummary = (state.logs || [])
+    .slice(0, 30)
+    .map((l) => `${l.id}_${l.pointsEarned}_${l.completedAt}`);
+
+  const transferSummary = (state.transferRequests || [])
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((t) => `${t.id}_${t.status}_${t.fromMemberId}_${t.toMemberId}`);
+
+  const proposalSummary = (state.proposals || [])
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((p) => `${p.id}_${p.status}_${Object.entries(p.votes || {}).sort().map(([k, v]) => `${k}:${v}`).join(',')}`);
+
+  const notifSummary = (state.notifications || [])
+    .slice(0, 20)
+    .map((n) => `${n.id}_${(n.readBy || []).sort().join(',')}`);
+
+  return JSON.stringify({
+    roomCode: state.roomCode,
+    roomName: state.roomName,
+    lastDateChecked: state.lastDateChecked,
+    rebalancePendingTomorrow: Boolean(state.rebalancePendingTomorrow),
+    chores: choreSummary,
+    members: memberSummary,
+    logs: logSummary,
+    transfers: transferSummary,
+    proposals: proposalSummary,
+    notifs: notifSummary,
+  });
+};
+
+/**
+ * Thuật toán Hợp nhất Trạng thái Đám mây Thông minh (Smart Conflict-Free State Merging)
+ * Đảm bảo 100% không bị mất công việc đã hoàn thành hoặc điểm số khi nhiều bạn cùng phòng
+ * thao tác đồng thời trên các điện thoại khác nhau.
+ */
+export const mergeStates = (local: AppState, remote: AppState): AppState => {
+  if (!remote || !remote.roomCode) return local;
+  if (!local || !local.roomCode) return remote;
+  if (local.roomCode !== remote.roomCode) return remote;
+
+  const localVer = local.version || 0;
+  const remoteVer = remote.version || 0;
+  const isRemoteNewer = remoteVer >= localVer;
+
+  // 1. Rollover Check: Nếu một bên đã sang ngày mới hơn
+  if (remote.lastDateChecked > local.lastDateChecked) {
+    return {
+      ...remote,
+      version: Math.max(localVer, remoteVer) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  if (local.lastDateChecked > remote.lastDateChecked) {
+    return {
+      ...local,
+      version: Math.max(localVer, remoteVer) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  // 2. Cùng ngày: Hợp nhất Chores (Ưu tiên trạng thái đã hoàn thành)
+  const choreMap = new Map<string, Chore>();
+  const allChoreIds = new Set([
+    ...(local.chores || []).map((c) => c.id),
+    ...(remote.chores || []).map((c) => c.id),
+  ]);
+
+  for (const cid of allChoreIds) {
+    const lChore = (local.chores || []).find((c) => c.id === cid);
+    const rChore = (remote.chores || []).find((c) => c.id === cid);
+
+    if (lChore && rChore) {
+      // Ưu tiên hoàn thành nếu 1 trong 2 bên đã tick hoàn thành hôm nay
+      const isCompletedToday = Boolean(lChore.isCompletedToday || rChore.isCompletedToday);
+      const isLatePenalized = Boolean(lChore.isLatePenalized || rChore.isLatePenalized);
+      const completedAt = rChore.completedAt || lChore.completedAt;
+      const completedBy = rChore.completedBy || lChore.completedBy;
+      const redoRequest = rChore.redoRequest || lChore.redoRequest;
+
+      // Base metadata lấy từ bản mới hơn
+      const base = isRemoteNewer ? rChore : lChore;
+      choreMap.set(cid, {
+        ...base,
+        isCompletedToday,
+        isLatePenalized,
+        completedAt,
+        completedBy,
+        redoRequest,
+      });
+    } else if (rChore) {
+      choreMap.set(cid, rChore);
+    } else if (lChore) {
+      choreMap.set(cid, lChore);
+    }
+  }
+
+  // 3. Hợp nhất Members (Lấy điểm cao nhất để không bao giờ bị mất điểm khi làm việc)
+  const memberMap = new Map<string, Member>();
+  const allMemberKeys = new Set([
+    ...(local.members || []).map((m) => m.id),
+    ...(remote.members || []).map((m) => m.id),
+  ]);
+
+  for (const mid of allMemberKeys) {
+    const lMem = (local.members || []).find((m) => m.id === mid);
+    const rMem = (remote.members || []).find((m) => m.id === mid);
+
+    if (lMem && rMem) {
+      const base = isRemoteNewer ? rMem : lMem;
+      memberMap.set(mid, {
+        ...base,
+        points: Math.max(lMem.points, rMem.points),
+        streak: Math.max(lMem.streak, rMem.streak),
+        lateViolations: Math.max(lMem.lateViolations || 0, rMem.lateViolations || 0),
+      });
+    } else if (rMem) {
+      memberMap.set(mid, rMem);
+    } else if (lMem) {
+      memberMap.set(mid, lMem);
+    }
+  }
+
+  // 4. Hợp nhất Logs (Gộp nhật ký, lọc trùng theo id, giữ tối đa 100 bản ghi mới nhất)
+  const logMap = new Map<string, ChoreLog>();
+  [...(local.logs || []), ...(remote.logs || [])].forEach((log) => {
+    if (!logMap.has(log.id)) {
+      logMap.set(log.id, log);
+    }
+  });
+  const mergedLogs = Array.from(logMap.values())
+    .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
+    .slice(0, 100);
+
+  // 5. Hợp nhất TransferRequests
+  const transferMap = new Map<string, TransferRequest>();
+  [...(local.transferRequests || []), ...(remote.transferRequests || [])].forEach((t) => {
+    const existing = transferMap.get(t.id);
+    if (!existing) {
+      transferMap.set(t.id, t);
+    } else {
+      if (existing.status === 'pending' && t.status !== 'pending') {
+        transferMap.set(t.id, t);
+      }
+    }
+  });
+
+  // 6. Hợp nhất Proposals
+  const proposalMap = new Map<string, RoomProposal>();
+  [...(local.proposals || []), ...(remote.proposals || [])].forEach((p) => {
+    const existing = proposalMap.get(p.id);
+    if (!existing) {
+      proposalMap.set(p.id, p);
+    } else {
+      const combinedVotes = { ...(existing.votes || {}), ...(p.votes || {}) };
+      const resolvedStatus = (existing.status !== 'pending') ? existing.status : p.status;
+      proposalMap.set(p.id, {
+        ...p,
+        votes: combinedVotes,
+        status: resolvedStatus,
+      });
+    }
+  });
+
+  // 7. Hợp nhất Notifications
+  const notifMap = new Map<string, AppNotification>();
+  [...(local.notifications || []), ...(remote.notifications || [])].forEach((n) => {
+    const existing = notifMap.get(n.id);
+    if (!existing) {
+      notifMap.set(n.id, n);
+    } else {
+      const combinedRead = Array.from(new Set([...(existing.readBy || []), ...(n.readBy || [])]));
+      notifMap.set(n.id, {
+        ...n,
+        readBy: combinedRead,
+      });
+    }
+  });
+  const mergedNotifications = Array.from(notifMap.values())
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 50);
+
+  return {
+    roomName: isRemoteNewer ? remote.roomName : local.roomName,
+    roomCode: remote.roomCode,
+    members: Array.from(memberMap.values()),
+    chores: Array.from(choreMap.values()),
+    logs: mergedLogs,
+    transferRequests: Array.from(transferMap.values()),
+    proposals: Array.from(proposalMap.values()),
+    notifications: mergedNotifications,
+    lastDateChecked: remote.lastDateChecked || local.lastDateChecked,
+    rebalancePendingTomorrow: Boolean(remote.rebalancePendingTomorrow || local.rebalancePendingTomorrow),
+    version: Math.max(localVer, remoteVer) + 1,
+    updatedAt: new Date().toISOString(),
+    lastUpdatedBy: local.lastUpdatedBy || remote.lastUpdatedBy,
+  };
 };

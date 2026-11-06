@@ -13,7 +13,8 @@ import {
   ClipboardList,
   Calendar,
   BookOpen,
-  ShieldCheck
+  ShieldCheck,
+  RefreshCw
 } from 'lucide-react';
 import { Member } from '../types';
 
@@ -36,6 +37,9 @@ interface MenuDrawerProps {
   onOpenRoomModal: () => void;
   onLeaveRoom: () => void;
   onLogout: () => void;
+  syncStatus?: 'idle' | 'syncing' | 'connected' | 'error' | 'offline';
+  lastSyncTime?: Date | null;
+  onManualSync?: () => void;
 }
 
 export const MenuDrawer: React.FC<MenuDrawerProps> = ({
@@ -57,6 +61,9 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   onOpenRoomModal,
   onLeaveRoom,
   onLogout,
+  syncStatus = 'connected',
+  lastSyncTime,
+  onManualSync,
 }) => {
   if (!isOpen) return null;
 
@@ -111,6 +118,51 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
         {/* Menu Items */}
         <div className="p-3 space-y-1 overflow-y-auto">
+          {/* Cloud Realtime Sync Status & Manual Sync Button */}
+          {onManualSync && (
+            <button
+              onClick={() => handleAction(onManualSync)}
+              className="w-full p-2.5 rounded-2xl bg-gradient-to-r from-indigo-50/70 to-violet-50/50 hover:from-indigo-100 hover:to-violet-100 border border-indigo-100 flex items-center justify-between text-left transition group cursor-pointer mb-2"
+              title="Bấm để đồng bộ dữ liệu đám mây ngay lập tức"
+            >
+              <div className="flex items-center space-x-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-2xs ${
+                  syncStatus === 'syncing' ? 'bg-indigo-600 text-white animate-spin' :
+                  syncStatus === 'offline' || syncStatus === 'error' ? 'bg-amber-100 text-amber-700' :
+                  'bg-emerald-100 text-emerald-700'
+                }`}>
+                  <RefreshCw className={`w-4 h-4 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                    <span>Đồng bộ Cloud Realtime</span>
+                    {syncStatus === 'connected' && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded-md border border-emerald-200">
+                        Đang kết nối
+                      </span>
+                    )}
+                    {(syncStatus === 'offline' || syncStatus === 'error') && (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded-md border border-amber-200">
+                        Chưa kết nối
+                      </span>
+                    )}
+                    {syncStatus === 'syncing' && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded-md border border-indigo-200 animate-pulse">
+                        Đang đồng bộ...
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    {syncStatus === 'syncing' ? 'Đang tải dữ liệu từ máy chủ...' :
+                     lastSyncTime ? `Lần cuối: ${lastSyncTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` :
+                     'Bấm để ép làm mới & kéo dữ liệu mới nhất'}
+                  </div>
+                </div>
+              </div>
+              <RefreshCw className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition shrink-0" />
+            </button>
+          )}
+
           {/* Admin Dashboard (chỉ hiện khi là tài khoản Admin) */}
           {isAdmin && onOpenAdminDashboard && (
             <button

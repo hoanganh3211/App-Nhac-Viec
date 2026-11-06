@@ -28,10 +28,12 @@ export const getSupabaseConfig = (): SupabaseConfig | null => {
 
 export const saveSupabaseConfig = (url: string, anonKey: string): void => {
   localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify({ url, anonKey }));
+  clientInstance = null;
 };
 
 export const clearSupabaseConfig = (): void => {
   localStorage.removeItem(SUPABASE_CONFIG_KEY);
+  clientInstance = null;
 };
 
 let clientInstance: SupabaseClient | null = null;
@@ -53,6 +55,10 @@ export const getSupabaseClient = (): SupabaseClient | null => {
 
 // Sync app state to Supabase room
 export const pushStateToCloud = async (state: AppState): Promise<boolean> => {
+  if (!state || !state.roomCode || state.roomCode === GLOBAL_USERS_ROOM_CODE) {
+    return false;
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) return false;
 
@@ -87,7 +93,7 @@ export const fetchStateFromCloud = async (roomCode: string): Promise<AppState | 
       .from('room_states')
       .select('state_data')
       .eq('room_code', roomCode)
-      .single();
+      .maybeSingle();
 
     if (error || !data) {
       return null;

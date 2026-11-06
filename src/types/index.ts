@@ -129,4 +129,7 @@ export interface AppState {
   notifications?: AppNotification[]; // Danh sách thông báo hoạt động phòng
   lastDateChecked: string;
   rebalancePendingTomorrow?: boolean; // Đánh dấu chia đều lại việc vào ngày mai khi có người mới gia nhập
+  updatedAt?: string; // Mốc thời gian cập nhật gần nhất (ISO) để đồng bộ đa thiết bị
+  version?: number; // Số phiên bản trạng thái để giải quyết xung đột dữ liệu
+  lastUpdatedBy?: string; // ID thiết bị/client vừa cập nhật để lọc echo realtime
 }
