@@ -1151,64 +1151,39 @@ export function App() {
     showToast(`Đã chuẩn bị lời nhắc cho ${assignee?.name}! Hãy dán vào Zalo nhé.`);
   };
 
-  // Thêm công việc (Nếu phòng > 1 người -> Cần biểu quyết quá bán)
+  // Thêm công việc trực tiếp (Luật mới: Ai cũng có thể thêm việc ngay lập tức, không cần chờ bỏ phiếu)
   const handleAddChore = (newChoreData: Omit<Chore, 'id' | 'isCompletedToday'>) => {
-    if (state.members.length <= 1) {
-      const newChore: Chore = {
-        ...newChoreData,
-        id: 'chore_' + Date.now(),
-        isCompletedToday: false,
-      };
-      setState((prev) => ({
-        ...prev,
-        chores: [newChore, ...prev.chores],
-      }));
-      showToast(`Đã thêm việc "${newChore.title}" (+${newChore.points}đ)!`);
-      return;
-    }
+    const newChore: Chore = {
+      ...newChoreData,
+      id: 'chore_' + Date.now(),
+      isCompletedToday: false,
+    };
 
-    const proposalId = 'prop_chore_' + Date.now();
     const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const creatorName = currentMember?.name || 'Thành viên';
     const creatorId = currentMember?.id || currentUserId || 'm_unknown';
-
     const isOnce = newChoreData.frequency === 'once';
-    const propTitle = isOnce
-      ? `⚡ Việc phát sinh (1 lần): ${newChoreData.title} (+${newChoreData.points}đ)`
-      : `Thêm việc: ${newChoreData.title} (+${newChoreData.points}đ)`;
-
-    const newProposal: RoomProposal = {
-      id: proposalId,
-      type: 'add_chore',
-      creatorId,
-      creatorName,
-      title: propTitle,
-      description: `${creatorName} đề xuất thêm việc này vào phòng (${isOnce ? 'Làm 1 lần duy nhất' : 'Lặp lại định kỳ'}). Cần quá bán thành viên đồng ý để phê duyệt.`,
-      createdAt: nowTimeStr,
-      choreData: newChoreData,
-      votes: {
-        [creatorId]: 'agree', // Người đề xuất tính là 1 phiếu Đồng ý
-      },
-      status: 'pending',
-    };
+    const assignedMember = state.members.find((m) => m.id === newChore.assignedTo);
 
     const newNotification: AppNotification = {
       id: 'notif_' + Date.now(),
-      title: isOnce ? '⚡ Biểu quyết việc phát sinh 1 lần' : '🗳️ Biểu quyết thêm việc mới',
-      message: `${creatorName} vừa đề xuất ${isOnce ? 'việc phát sinh 1 lần' : 'thêm việc'} "${newChoreData.title}" (+${newChoreData.points}đ). Hãy tham gia bỏ phiếu!`,
-      type: 'proposal_vote',
+      title: isOnce ? '⚡ Việc phát sinh mới (1 lần)' : '📋 Công việc mới được thêm',
+      message: `${creatorName} vừa thêm việc "${newChore.title}" (+${newChore.points}đ). Phân công: ${
+        assignedMember?.name || 'Tự động luân phiên'
+      }.`,
+      type: 'chore_completed',
       createdAt: `Hôm nay ${nowTimeStr}`,
       readBy: [creatorId],
-      proposalId,
+      choreId: newChore.id,
     };
 
     setState((prev) => ({
       ...prev,
-      proposals: [newProposal, ...(prev.proposals || [])],
+      chores: [newChore, ...prev.chores],
       notifications: [newNotification, ...(prev.notifications || [])],
     }));
 
-    showToast(`🗳️ Đã gửi đề xuất thêm "${newChoreData.title}"! Cần quá bán thành viên bỏ phiếu để phê duyệt.`);
+    showToast(`🎉 Đã thêm việc "${newChore.title}" (+${newChore.points}đ) vào phòng!`);
   };
 
   // Đề xuất xóa thành viên (Nếu phòng > 1 người -> Cần biểu quyết quá bán)

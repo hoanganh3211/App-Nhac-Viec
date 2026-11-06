@@ -318,7 +318,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                   </div>
                   <h4 className="font-bold text-slate-700 text-xs">Chưa có đề xuất nào</h4>
                   <p className="text-[11px] text-slate-400">
-                    Các thao tác quan trọng (thêm việc, sửa việc, xóa việc) sẽ cần phòng biểu quyết ở đây.
+                    Các thao tác quan trọng (sửa việc, xóa việc, xóa thành viên) sẽ cần phòng biểu quyết ở đây.
                   </p>
                 </div>
               ) : (

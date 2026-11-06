@@ -491,15 +491,11 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
               type="submit"
               className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 transition text-sm cursor-pointer"
             >
-              {members.length > 1 
-                ? (frequency === 'once' ? '+ Gửi Đề Xuất Việc Phát Sinh (1 lần)' : '+ Gửi Đề Xuất Thêm Việc')
-                : (frequency === 'once' ? 'Lưu Việc Phát Sinh 1 Lần' : 'Lưu & Phân Công Việc')}
+              {frequency === 'once' ? '+ Thêm Việc Phát Sinh (1 Lần)' : '+ Thêm & Phân Công Việc'}
             </button>
-            {members.length > 1 && (
-              <p className="text-[10px] text-slate-400 text-center italic">
-                *Thêm việc mới sẽ được gửi cho phòng biểu quyết (cần &gt;50% đồng ý).
-              </p>
-            )}
+            <p className="text-[10px] text-slate-400 text-center italic">
+              *Công việc sẽ được thêm ngay vào danh sách phòng không cần chờ bỏ phiếu.
+            </p>
           </div>
         </form>
       </div>

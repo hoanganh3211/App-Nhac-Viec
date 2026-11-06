@@ -376,6 +376,28 @@ export const loadState = (): AppState => {
       }));
     }
 
+    // Tự động kích hoạt các đề xuất thêm việc cũ còn đang chờ duyệt
+    // (Áp dụng luật mới: Ai cũng có thể thêm việc ngay lập tức không cần chờ bỏ phiếu)
+    if (parsed.proposals && Array.isArray(parsed.proposals)) {
+      if (!parsed.chores) parsed.chores = [];
+      parsed.proposals.forEach((p: RoomProposal) => {
+        if (p.type === 'add_chore' && p.status === 'pending' && p.choreData) {
+          const alreadyExists = parsed.chores.some(
+            (c: Chore) => c.title === p.choreData?.title && c.points === p.choreData?.points
+          );
+          if (!alreadyExists) {
+            const newChore: Chore = {
+              ...p.choreData,
+              id: 'chore_' + (p.id ? p.id.replace('prop_chore_', '') : Date.now()),
+              isCompletedToday: false,
+            };
+            parsed.chores.unshift(newChore);
+          }
+          p.status = 'approved';
+        }
+      });
+    }
+
     const rolloverState = handleDayRollover(parsed);
     saveState(rolloverState);
     return rolloverState;
@@ -591,6 +613,24 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
         votes: combinedVotes,
         status: resolvedStatus,
       });
+    }
+  });
+
+  // Tự động kích hoạt các đề xuất thêm việc cũ còn đang treo (áp dụng luật mới không cần chờ vote)
+  proposalMap.forEach((p) => {
+    if (p.type === 'add_chore' && p.status === 'pending' && p.choreData) {
+      const choreExists = Array.from(choreMap.values()).some(
+        (c) => c.title === p.choreData?.title && c.points === p.choreData?.points
+      );
+      if (!choreExists) {
+        const newChoreId = 'chore_' + (p.id ? p.id.replace('prop_chore_', '') : Date.now());
+        choreMap.set(newChoreId, {
+          ...p.choreData,
+          id: newChoreId,
+          isCompletedToday: false,
+        });
+      }
+      p.status = 'approved';
     }
   });
 

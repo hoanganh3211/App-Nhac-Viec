@@ -250,7 +250,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-600 leading-relaxed">
-              Khi ai đó <strong>thêm việc mới</strong>, <strong>sửa lịch</strong> hoặc <strong>xóa việc</strong>, hệ thống sẽ mở biểu quyết để các thành viên cùng phòng bấm Đồng ý / Từ chối.
+              Khi ai đó <strong>sửa lịch</strong> hoặc <strong>xóa việc</strong>, hệ thống sẽ mở biểu quyết để các thành viên cùng phòng bấm Đồng ý / Từ chối. Riêng <strong>thêm việc mới</strong> thì ai cũng có thể thêm ngay lập tức!
             </p>
           </div>
 
