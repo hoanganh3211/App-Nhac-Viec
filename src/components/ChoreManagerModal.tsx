@@ -532,14 +532,9 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
                 type="submit"
                 className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
               >
-                {members.length > 1 ? '+ Gửi Đề Xuất Sửa Việc' : 'Lưu Thay Đổi'}
+                Lưu Thay Đổi
               </button>
             </div>
-            {members.length > 1 && (
-              <p className="text-[10px] text-slate-400 text-center italic">
-                *Chỉnh sửa sẽ được gửi cho phòng biểu quyết (cần &gt;50% đồng ý).
-              </p>
-            )}
           </form>
         )}
 
@@ -552,11 +547,10 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
               </div>
               <div>
                 <h4 className="font-bold text-slate-800 text-sm">
-                  {members.length > 1 ? 'Đề xuất xóa công việc?' : 'Xóa công việc này?'}
+                  Xóa công việc này?
                 </h4>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Bạn có chắc muốn xóa "{confirmDeleteChore.icon} {confirmDeleteChore.title}"?
-                  {members.length > 1 && ' Đề xuất cần hơn 50% thành viên phòng đồng ý.'}
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                  Bạn có chắc muốn xóa vĩnh viễn việc "<strong>{confirmDeleteChore.icon} {confirmDeleteChore.title}</strong>" khỏi phòng? Việc này sẽ có hiệu lực ngay lập tức.
                 </p>
               </div>
               <div className="flex items-center space-x-2 pt-1">
@@ -572,7 +566,7 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
                   onClick={handleConfirmDelete}
                   className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
                 >
-                  {members.length > 1 ? 'Gửi đề xuất' : 'Xóa việc'}
+                  Xóa việc
                 </button>
               </div>
             </div>

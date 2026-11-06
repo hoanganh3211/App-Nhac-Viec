@@ -446,3 +446,36 @@ export const deleteMemberFromCloudRoom = async (
     return { success: false, error: err?.message || 'Lỗi khi xóa thành viên khỏi phòng.' };
   }
 };
+
+// Delete a chore from a cloud room
+export const deleteChoreFromCloudRoom = async (
+  roomCode: string,
+  choreId: string
+): Promise<{ success: boolean; error?: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Chưa kết nối Supabase Cloud.' };
+
+  try {
+    const cleanCode = roomCode.trim().toUpperCase();
+    const state = await fetchStateFromCloud(cleanCode);
+    if (!state) return { success: false, error: 'Không tìm thấy dữ liệu phòng.' };
+
+    const updatedChores = (state.chores || []).filter((c) => c.id !== choreId);
+    const updatedProposals = (state.proposals || []).filter((p) => p.targetChoreId !== choreId);
+
+    const newState: AppState = {
+      ...state,
+      chores: updatedChores,
+      proposals: updatedProposals,
+      updatedAt: new Date().toISOString(),
+      version: (state.version || 0) + 1,
+      lastUpdatedBy: 'admin_delete',
+    };
+
+    const pushed = await pushStateToCloud(newState);
+    if (!pushed) return { success: false, error: 'Không thể cập nhật phòng sau khi xóa việc.' };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Lỗi khi xóa việc khỏi phòng.' };
+  }
+};

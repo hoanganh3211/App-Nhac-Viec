@@ -1301,126 +1301,81 @@ export function App() {
     showToast(`🗳️ Đã gửi đề xuất xóa ${target.name}! Cần hơn nửa thành viên đồng ý để phê duyệt.`);
   };
 
-  // Đề xuất sửa công việc (Nếu phòng > 1 người -> Cần biểu quyết quá bán)
-  const handleRequestEditChore = (
+  // Sửa công việc trực tiếp (theo luật mới: cập nhật ngay lập tức, không cần chờ vote)
+  const handleRequestEditChore = async (
     choreId: string,
     updatedData: Partial<Omit<Chore, 'id' | 'assignedTo' | 'isCompletedToday'>>
   ) => {
     const targetChore = state.chores.find((c) => c.id === choreId);
     if (!targetChore) return;
 
-    if (state.members.length <= 1) {
-      const updatedChores = state.chores.map((c) =>
-        c.id === choreId
-          ? {
-              ...c,
-              ...updatedData,
-              assignedTo: c.assignedTo, // Giữ nguyên người làm theo logic phân chia công việc
-              isCompletedToday: c.isCompletedToday,
-            }
-          : c
-      );
-      setState((prev) => ({
-        ...prev,
-        chores: updatedChores,
-      }));
-      showToast(`Đã cập nhật công việc "${targetChore.title}"!`);
-      return;
-    }
+    const updatedChores = state.chores.map((c) =>
+      c.id === choreId
+        ? {
+            ...c,
+            ...updatedData,
+            assignedTo: c.assignedTo, // Giữ nguyên người làm theo logic phân chia công việc
+            isCompletedToday: c.isCompletedToday,
+          }
+        : c
+    );
 
-    const proposalId = 'prop_edit_' + Date.now();
-    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    const creatorName = currentMember?.name || 'Thành viên';
-    const creatorId = currentMember?.id || currentUserId || 'm_unknown';
-
-    const newProposal: RoomProposal = {
-      id: proposalId,
-      type: 'edit_chore',
-      creatorId,
-      creatorName,
-      title: `Sửa việc: ${targetChore.title}${updatedData.title && updatedData.title !== targetChore.title ? ` ➔ ${updatedData.title}` : ''}`,
-      description: `${creatorName} đề xuất chỉnh sửa thông tin việc "${targetChore.title}". Người làm vẫn giữ nguyên theo thuật toán xoay việc. Cần quá bán thành viên đồng ý.`,
-      createdAt: nowTimeStr,
-      targetChoreId: choreId,
-      updatedChoreData: updatedData,
-      votes: {
-        [creatorId]: 'agree',
-      },
-      status: 'pending',
+    const newState: AppState = {
+      ...state,
+      chores: updatedChores,
+      updatedAt: new Date().toISOString(),
+      version: (state.version || 0) + 1,
+      lastUpdatedBy: clientIdRef.current,
     };
 
-    const newNotification: AppNotification = {
-      id: 'notif_' + Date.now(),
-      title: '🗳️ Biểu quyết sửa công việc',
-      message: `${creatorName} đề xuất chỉnh sửa việc "${targetChore.title}". Hãy tham gia bỏ phiếu!`,
-      type: 'proposal_vote',
-      createdAt: `Hôm nay ${nowTimeStr}`,
-      readBy: [creatorId],
-      proposalId,
-      choreId,
-    };
+    lastCanonicalSigRef.current = getCanonicalStateSignature(newState);
+    setState(newState);
+    saveState(newState);
+    await pushStateToCloud(newState);
 
-    setState((prev) => ({
-      ...prev,
-      proposals: [newProposal, ...(prev.proposals || [])],
-      notifications: [newNotification, ...(prev.notifications || [])],
-    }));
-
-    showToast(`🗳️ Đã gửi đề xuất sửa "${targetChore.title}"! Cần quá bán đồng ý để phê duyệt.`);
+    showToast(`✓ Đã cập nhật công việc "${targetChore.title}" thành công!`);
   };
 
-  // Đề xuất xóa công việc (Nếu phòng > 1 người -> Cần biểu quyết quá bán)
-  const handleRequestDeleteChore = (choreId: string) => {
+  // Xóa công việc trực tiếp (theo luật mới: xóa ngay lập tức khỏi phòng, không cần chờ vote)
+  const handleRequestDeleteChore = async (choreId: string) => {
     const targetChore = state.chores.find((c) => c.id === choreId);
     if (!targetChore) return;
 
-    if (state.members.length <= 1) {
-      setState((prev) => ({
-        ...prev,
-        chores: prev.chores.filter((c) => c.id !== choreId),
-      }));
-      showToast(`Đã xóa công việc "${targetChore.title}"!`);
-      return;
-    }
-
-    const proposalId = 'prop_del_chore_' + Date.now();
-    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const creatorName = currentMember?.name || 'Thành viên';
-    const creatorId = currentMember?.id || currentUserId || 'm_unknown';
+    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
-    const newProposal: RoomProposal = {
-      id: proposalId,
-      type: 'delete_chore',
-      creatorId,
-      creatorName,
-      title: `Xóa việc: ${targetChore.title}`,
-      description: `${creatorName} đề xuất xóa vĩnh viễn việc "${targetChore.title}" khỏi phòng. Cần quá bán thành viên đồng ý.`,
-      createdAt: nowTimeStr,
-      targetChoreId: choreId,
-      votes: {
-        [creatorId]: 'agree',
-      },
-      status: 'pending',
+    const updatedChores = state.chores.filter((c) => c.id !== choreId);
+    const updatedProposals = (state.proposals || []).filter((p) => p.targetChoreId !== choreId);
+
+    const deleteLog: ChoreLog = {
+      id: 'log_del_' + Date.now(),
+      choreId: 'del_' + choreId,
+      choreTitle: `Xóa việc: ${targetChore.title}`,
+      memberId: currentUserId || 'usr_unknown',
+      memberName: creatorName,
+      completedAt: `Hôm nay ${nowTimeStr}`,
+      pointsEarned: 0,
+      type: 'completed',
+      dateStr: getTodayDateString(),
+      note: `${creatorName} đã xóa vĩnh viễn việc "${targetChore.title}"`,
     };
 
-    const newNotification: AppNotification = {
-      id: 'notif_' + Date.now(),
-      title: '🗳️ Biểu quyết xóa công việc',
-      message: `${creatorName} đề xuất xóa việc "${targetChore.title}" khỏi phòng. Hãy tham gia bỏ phiếu!`,
-      type: 'proposal_vote',
-      createdAt: `Hôm nay ${nowTimeStr}`,
-      readBy: [creatorId],
-      proposalId,
-      choreId,
+    const newState: AppState = {
+      ...state,
+      chores: updatedChores,
+      proposals: updatedProposals,
+      logs: [deleteLog, ...(state.logs || [])],
+      updatedAt: new Date().toISOString(),
+      version: (state.version || 0) + 1,
+      lastUpdatedBy: clientIdRef.current,
     };
 
-    setState((prev) => ({
-      ...prev,
-      proposals: [newProposal, ...(prev.proposals || [])],
-      notifications: [newNotification, ...(prev.notifications || [])],
-    }));
+    lastCanonicalSigRef.current = getCanonicalStateSignature(newState);
+    setState(newState);
+    saveState(newState);
+    await pushStateToCloud(newState);
 
-    showToast(`🗳️ Đã gửi đề xuất xóa "${targetChore.title}"! Cần quá bán đồng ý để phê duyệt.`);
+    showToast(`✓ Đã xóa vĩnh viễn công việc "${targetChore.title}" khỏi phòng!`);
   };
 
   // Bỏ phiếu biểu quyết (Dân chủ phòng chung)

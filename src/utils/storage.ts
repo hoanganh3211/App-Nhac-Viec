@@ -784,10 +784,13 @@ export const mergeStates = (local: AppState, remote: AppState): AppState => {
     }
   });
 
-  // Tự động kích hoạt các đề xuất thêm việc cũ còn đang treo (chỉ khi không phải admin reset)
+  // Tự động kích hoạt các đề xuất thêm việc cũ hoặc thực thi đề xuất xóa việc cũ còn đang treo (áp dụng luật mới không cần chờ vote)
   if (remote.lastUpdatedBy !== 'admin_reset' && local.lastUpdatedBy !== 'admin_reset') {
     proposalMap.forEach((p) => {
-      if (p.type === 'add_chore' && p.status === 'pending' && p.choreData) {
+      if (p.type === 'delete_chore' && p.targetChoreId) {
+        choreMap.delete(p.targetChoreId);
+        p.status = 'approved';
+      } else if (p.type === 'add_chore' && p.status === 'pending' && p.choreData) {
         const choreExists = Array.from(choreMap.values()).some(
           (c) => c.title === p.choreData?.title && c.points === p.choreData?.points
         );

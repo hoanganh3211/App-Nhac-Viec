@@ -29,6 +29,7 @@ import {
   fetchAllRoomsForAdmin, 
   deleteRoomFromCloud, 
   deleteMemberFromCloudRoom, 
+  deleteChoreFromCloudRoom,
   clearAllCloudData, 
   CloudRoomData, 
   getSupabaseConfig,
@@ -196,6 +197,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showToast(`✓ Đã xóa "${memberName}" khỏi phòng ${roomCode}!`);
     } else {
       showToast(`❌ Xóa thành viên thất bại: ${res.error}`);
+    }
+  };
+
+  // Delete Chore From Room (Admin Direct Action)
+  const handleDeleteChoreFromRoom = async (
+    roomCode: string,
+    choreId: string,
+    choreTitle: string
+  ) => {
+    if (
+      !window.confirm(
+        `Xác nhận xóa vĩnh viễn công việc "${choreTitle}" khỏi phòng ${roomCode}?`
+      )
+    ) {
+      return;
+    }
+
+    const res = await deleteChoreFromCloudRoom(roomCode, choreId);
+    if (res.success) {
+      setRooms((prev) =>
+        prev.map((r) => {
+          if (r.roomCode !== roomCode) return r;
+          const updatedChores = r.chores.filter((c) => c.id !== choreId);
+          return {
+            ...r,
+            chores: updatedChores,
+            choreCount: updatedChores.length,
+          };
+        })
+      );
+      showToast(`✓ Đã xóa việc "${choreTitle}" khỏi phòng ${roomCode}!`);
+    } else {
+      showToast(`❌ Xóa công việc thất bại: ${res.error}`);
     }
   };
 
@@ -705,9 +739,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <span className="truncate">
                                       {chore.icon} {chore.title}
                                     </span>
-                                    <span className="text-amber-400 shrink-0 text-[10px] font-bold">
-                                      +{chore.points}đ
-                                    </span>
+                                    <div className="flex items-center space-x-1.5 shrink-0">
+                                      <span className="text-amber-400 text-[10px] font-bold">
+                                        +{chore.points}đ
+                                      </span>
+                                      <button
+                                        onClick={() =>
+                                          handleDeleteChoreFromRoom(room.roomCode, chore.id, chore.title)
+                                        }
+                                        className="p-1 rounded-lg text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
+                                        title="Xóa vĩnh viễn việc này khỏi phòng"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
                                   </div>
                                   <div className="text-[10px] text-slate-400 flex items-center justify-between">
                                     <span>Giao: {assignee?.name || 'Chưa gán'}</span>
