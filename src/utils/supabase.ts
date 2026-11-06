@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AppState, UserAccount } from '../types';
+import { autoBalanceChores } from './storage';
 
 const SUPABASE_CONFIG_KEY = 'app_nhac_viec_supabase_cfg';
 
@@ -477,5 +478,82 @@ export const deleteChoreFromCloudRoom = async (
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Lỗi khi xóa việc khỏi phòng.' };
+  }
+};
+
+/**
+ * Admin reload / cân bằng lại công việc theo đúng công thức chia việc công bằng
+ */
+export const rebalanceRoomChoresForAdmin = async (
+  roomCode: string
+): Promise<{ success: boolean; alreadyFair?: boolean; message?: string; error?: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Chưa kết nối Supabase Cloud.' };
+
+  try {
+    const cleanCode = roomCode.trim().toUpperCase();
+    const state = await fetchStateFromCloud(cleanCode);
+    if (!state) return { success: false, error: 'Không tìm thấy dữ liệu phòng.' };
+
+    // 1. Loại bỏ tài khoản Admin nếu vô tình bị thêm vào thành viên phòng
+    const realMembers = (state.members || []).filter(
+      (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
+    );
+
+    if (realMembers.length === 0) {
+      return {
+        success: true,
+        alreadyFair: true,
+        message: 'Phòng chưa có thành viên nào để phân chia công việc.',
+      };
+    }
+
+    if (!state.chores || state.chores.length === 0) {
+      return {
+        success: true,
+        alreadyFair: true,
+        message: 'Phòng chưa có công việc nào để phân chia.',
+      };
+    }
+
+    // 2. Chạy thuật toán chia việc công bằng theo công thức
+    const balancedChores = autoBalanceChores(state.chores, realMembers);
+
+    // 3. Kiểm tra xem công việc đã được chia công bằng tối ưu chưa
+    const isAlreadyFair = state.chores.every((c) => {
+      const b = balancedChores.find((bc) => bc.id === c.id);
+      return b && b.assignedTo === c.assignedTo;
+    });
+
+    if (isAlreadyFair) {
+      return {
+        success: true,
+        alreadyFair: true,
+        message: 'Công việc đã được phân chia công bằng tối ưu rồi, không cần thay đổi.',
+      };
+    }
+
+    // 4. Nếu chưa công bằng -> Cập nhật danh sách công việc đã cân bằng lên Cloud
+    const newState: AppState = {
+      ...state,
+      members: realMembers,
+      chores: balancedChores,
+      updatedAt: new Date().toISOString(),
+      version: (state.version || 0) + 1,
+      lastUpdatedBy: 'admin_rebalance',
+    };
+
+    const pushed = await pushStateToCloud(newState);
+    if (!pushed) {
+      return { success: false, error: 'Không thể lưu công việc đã cân bằng lên Cloud.' };
+    }
+
+    return {
+      success: true,
+      alreadyFair: false,
+      message: `Đã cân bằng lại công việc theo công thức công bằng cho ${realMembers.length} thành viên!`,
+    };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Lỗi khi cân bằng công việc.' };
   }
 };

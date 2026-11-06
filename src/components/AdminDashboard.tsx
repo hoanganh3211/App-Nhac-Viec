@@ -17,7 +17,8 @@ import {
   ArrowRight,
   Copy,
   Check,
-  RotateCcw
+  RotateCcw,
+  Scale
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { 
@@ -35,7 +36,8 @@ import {
   getSupabaseConfig,
   saveSupabaseConfig,
   resetAllChoresAndPointsKeepRoomsAndMembers,
-  resetSingleRoomChoresAndPoints
+  resetSingleRoomChoresAndPoints,
+  rebalanceRoomChoresForAdmin
 } from '../utils/supabase';
 import { resetLocalChoresAndPoints } from '../utils/storage';
 
@@ -365,6 +367,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // Reload & Cân bằng lại công việc theo đúng công thức chia việc công bằng
+  const handleRebalanceRoom = async (roomCode: string, roomName: string) => {
+    try {
+      const res = await rebalanceRoomChoresForAdmin(roomCode);
+      if (res.success) {
+        if (res.alreadyFair) {
+          showToast(`✨ Công việc phòng "${roomName}" đã được phân chia công bằng tối ưu rồi, không cần thay đổi.`);
+        } else {
+          showToast(`⚖️ ${res.message || 'Đã phân chia lại công việc công bằng!'}`);
+          loadAllData();
+        }
+      } else {
+        showToast(`❌ Thao tác thất bại: ${res.error}`);
+      }
+    } catch (e: any) {
+      showToast(`❌ Lỗi: ${e?.message}`);
+    }
+  };
+
   const totalChoresCount = useMemo(() => {
     return rooms.reduce((sum, r) => sum + r.choreCount, 0);
   }, [rooms]);
@@ -646,6 +667,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </button>
 
                         <button
+                          onClick={() => handleRebalanceRoom(room.roomCode, room.roomName)}
+                          className="p-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 transition cursor-pointer"
+                          title="Cân bằng lại công việc theo công thức chia việc công bằng"
+                        >
+                          <Scale className="w-4 h-4" />
+                        </button>
+
+                        <button
                           onClick={() => handleResetSingleRoom(room.roomCode, room.roomName)}
                           className="p-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 transition cursor-pointer"
                           title="Xóa việc & reset điểm phòng này (Bảo lưu phòng & thành viên)"
@@ -723,9 +752,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                         {/* Chores Detailed List */}
                         <div className="space-y-2 pt-1">
-                          <div className="text-xs font-bold text-slate-300 flex items-center space-x-1.5">
-                            <ClipboardList className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Danh sách công việc trong phòng ({room.chores.length}):</span>
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs font-bold text-slate-300 flex items-center space-x-1.5">
+                              <ClipboardList className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Danh sách công việc trong phòng ({room.chores.length}):</span>
+                            </div>
+                            <button
+                              onClick={() => handleRebalanceRoom(room.roomCode, room.roomName)}
+                              className="px-2.5 py-1 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold text-[10px] shadow-xs flex items-center space-x-1 transition cursor-pointer"
+                              title="Tái cân bằng công việc theo công thức chia việc công bằng"
+                            >
+                              <Scale className="w-3 h-3" />
+                              <span>Cân bằng việc</span>
+                            </button>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {room.chores.map((chore) => {

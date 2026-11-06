@@ -6,7 +6,8 @@ import {
   CheckCircle2, 
   Share2, 
   UserCheck,
-  ShieldCheck
+  ShieldCheck,
+  Scale
 } from 'lucide-react';
 import { AppState, Chore, Member, TransferRequest, ChoreLog, RoomProposal, AppNotification } from './types';
 import { 
@@ -87,15 +88,21 @@ export function App() {
 
   const [state, setState] = useState<AppState>(loadState);
 
+  // Xác định người dùng có phải là Quản trị viên (Admin) không
+  const isAdmin = Boolean(
+    authUser && (authUser.role === 'admin' || authUser.username.toLowerCase() === 'admin')
+  );
+
   // Authenticated Member in the room (matched by ID or username)
+  // Quản trị viên chỉ là người giám sát, kiểm tra phòng chứ KHÔNG PHẢI là thành viên phòng!
   const currentMember = useMemo(() => {
-    if (!authUser) return undefined;
+    if (!authUser || isAdmin) return undefined;
     return state.members.find(
       (m) => m.id === authUser.id || m.name.toLowerCase() === authUser.username.toLowerCase()
     );
-  }, [state.members, authUser]);
+  }, [state.members, authUser, isAdmin]);
 
-  const currentUserId = currentMember?.id || authUser?.id || null;
+  const currentUserId = isAdmin ? null : (currentMember?.id || authUser?.id || null);
 
   // Anti-loop and anti-flicker refs
   const stateRef = useRef(state);
@@ -129,7 +136,9 @@ export function App() {
   const isRemoteUpdateRef = useRef(false);
   const lastCanonicalSigRef = useRef<string>('');
 
-  const [activeTab, setActiveTab] = useState<'my_chores' | 'today_all' | 'all' | 'pending' | 'completed'>('my_chores');
+  const [activeTab, setActiveTab] = useState<'my_chores' | 'today_all' | 'all' | 'pending' | 'completed'>(() => {
+    return isAdmin ? 'today_all' : 'my_chores';
+  });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     getNotificationPermission()
@@ -908,8 +917,17 @@ export function App() {
 
     const activeUser = userOverride || authUser;
     let updatedMembers = [...targetState.members];
+    const isUserAdmin = Boolean(
+      activeUser && (activeUser.role === 'admin' || activeUser.username.toLowerCase() === 'admin')
+    );
 
-    if (activeUser) {
+    // QUAN TRỌNG: Quản trị viên (Admin) chỉ là người kiểm tra/giám sát phòng, KHÔNG PHẢI là thành viên phòng!
+    // Tuyệt đối không thêm Admin vào phòng và luôn lọc sạch nếu vô tình có trước đó:
+    updatedMembers = updatedMembers.filter(
+      (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
+    );
+
+    if (activeUser && !isUserAdmin) {
       const existingMember = updatedMembers.find(
         (m) => m.id === activeUser.id || m.name.toLowerCase() === activeUser.username.toLowerCase()
       );
@@ -952,9 +970,26 @@ export function App() {
       updateUserRoom(activeUser.id, cleanCode);
     }
 
+    // Nếu trước đó có việc nào bị gán nhầm cho Admin, tự động chuyển cho thành viên thật
+    let updatedChores = [...(targetState.chores || [])];
+    const hasAdminChore = updatedChores.some(
+      (c) => c.assignedTo === 'usr_admin_root' || c.assignedTo === 'admin'
+    );
+    if (hasAdminChore && updatedMembers.length > 0) {
+      updatedChores = autoBalanceChores(
+        updatedChores.map((c) =>
+          c.assignedTo === 'usr_admin_root' || c.assignedTo === 'admin'
+            ? { ...c, assignedTo: updatedMembers[0].id }
+            : c
+        ),
+        updatedMembers
+      );
+    }
+
     const finalState: AppState = {
       ...targetState,
       members: updatedMembers,
+      chores: updatedChores,
       lastUpdatedBy: clientIdRef.current,
       updatedAt: new Date().toISOString(),
       version: (targetState.version || 0) + 1,
@@ -971,7 +1006,11 @@ export function App() {
     // Silent push updated room with new member to Supabase
     await pushStateToCloud(finalState);
 
-    showToast(`🎉 Chào mừng ${activeUser?.username || ''} đã vào phòng "${finalState.roomName}"!`);
+    if (isUserAdmin) {
+      showToast(`🛡️ Đang giám sát phòng "${finalState.roomName}" (Chế độ kiểm tra Admin).`);
+    } else {
+      showToast(`🎉 Chào mừng ${activeUser?.username || ''} đã vào phòng "${finalState.roomName}"!`);
+    }
     return true;
   };
 
@@ -1233,20 +1272,44 @@ export function App() {
   };
 
   // Tái cân bằng toàn bộ công việc nhà trong phòng theo thuật toán công bằng
-  const handleRebalanceChores = () => {
-    if (state.members.length === 0 || state.chores.length === 0) {
-      showToast('Phòng chưa có công việc hoặc thành viên để phân chia.');
+  const handleRebalanceChores = async () => {
+    const realMembers = (state.members || []).filter(
+      (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
+    );
+
+    if (realMembers.length === 0 || state.chores.length === 0) {
+      showToast('⚠️ Phòng chưa có đủ công việc hoặc thành viên để phân chia.');
       return;
     }
 
-    const balancedChores = autoBalanceChores(state.chores, state.members, {
+    const balancedChores = autoBalanceChores(state.chores, realMembers, {
       preserveCompleted: true,
     });
 
-    setState((prev) => ({
-      ...prev,
+    // Kiểm tra xem công việc đã được chia công bằng tối ưu chưa
+    const isAlreadyFair = state.chores.every((c) => {
+      const b = balancedChores.find((bc) => bc.id === c.id);
+      return b && b.assignedTo === c.assignedTo;
+    });
+
+    if (isAlreadyFair) {
+      showToast('✨ Công việc đã được phân chia công bằng tối ưu rồi, không cần thay đổi.');
+      return;
+    }
+
+    const newState: AppState = {
+      ...state,
+      members: realMembers,
       chores: balancedChores,
-    }));
+      updatedAt: new Date().toISOString(),
+      version: (state.version || 0) + 1,
+      lastUpdatedBy: clientIdRef.current,
+    };
+
+    lastCanonicalSigRef.current = getCanonicalStateSignature(newState);
+    setState(newState);
+    saveState(newState);
+    await pushStateToCloud(newState);
 
     showToast('⚖️ Đã dùng thuật toán phân chia lại toàn bộ công việc đồng đều cho mọi người!');
   };
@@ -1665,8 +1728,6 @@ export function App() {
     );
   }
 
-  const isAdmin = authUser.role === 'admin' || authUser.username.toLowerCase() === 'admin';
-
   // 1.5. Nếu là Quản trị viên và đang mở Admin Dashboard: HIỆN BẢNG ĐIỀU KHIỂN QUẢN TRỊ
   if (isAdmin && isAdminDashboardOpen) {
     return (
@@ -1737,6 +1798,46 @@ export function App() {
 
       {/* Main Content */}
       <main className="p-3.5 space-y-3.5 flex-1">
+        {/* Admin Inspector Mode Banner */}
+        {isAdmin && (
+          <div className="p-3 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl shadow-md border border-indigo-900/50 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5 min-w-0 mr-2">
+              <div className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded-xl border border-indigo-500/30 shrink-0">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold flex items-center space-x-1.5">
+                  <span className="truncate">Chế độ Giám Sát (Admin)</span>
+                  <span className="text-[10px] px-1.5 py-0.2 bg-indigo-500/20 text-indigo-300 rounded-md shrink-0 border border-indigo-400/20">
+                    Chỉ kiểm tra
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-300 truncate">
+                  Admin không phải thành viên phòng • {state.members.length} thành viên thật
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-1.5 shrink-0">
+              <button
+                onClick={handleRebalanceChores}
+                className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold rounded-xl shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                title="Cân bằng lại công việc theo đúng công thức chia việc công bằng"
+              >
+                <Scale className="w-3.5 h-3.5" />
+                <span>Cân bằng</span>
+              </button>
+              <button
+                onClick={() => setIsAdminDashboardOpen(true)}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold rounded-xl transition cursor-pointer"
+                title="Về Bảng Quản Trị Hệ Thống (Admin Dashboard)"
+              >
+                <span>Về Panel</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Democratic Proposal Voting Banner */}
         <ProposalVoteCard
           proposals={state.proposals || []}
@@ -1745,20 +1846,22 @@ export function App() {
           onVote={handleVoteProposal}
         />
 
-        {/* Personalized Task Highlight Banner & Incoming Transfer Alert */}
-        <PersonalTaskBanner
-          currentMember={currentMember}
-          myChores={myChores}
-          incomingRequests={incomingTransferRequests}
-          onToggleComplete={handleToggleComplete}
-          onRequestNotification={handleRequestNotification}
-          notificationPermission={notificationPermission}
-          onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
-          onOpenTransfer={(chore) => setTransferTargetChore(chore)}
-          onAcceptTransfer={handleAcceptTransfer}
-          onDeclineTransfer={handleDeclineTransfer}
-          onOpenDetail={(chore) => setSelectedChoreForDetail(chore)}
-        />
+        {/* Personalized Task Highlight Banner (Chỉ hiện cho thành viên thật trong phòng) */}
+        {!isAdmin && (
+          <PersonalTaskBanner
+            currentMember={currentMember}
+            myChores={myChores}
+            incomingRequests={incomingTransferRequests}
+            onToggleComplete={handleToggleComplete}
+            onRequestNotification={handleRequestNotification}
+            notificationPermission={notificationPermission}
+            onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
+            onOpenTransfer={(chore) => setTransferTargetChore(chore)}
+            onAcceptTransfer={handleAcceptTransfer}
+            onDeclineTransfer={handleDeclineTransfer}
+            onOpenDetail={(chore) => setSelectedChoreForDetail(chore)}
+          />
+        )}
 
         {/* Date & Quick Progress / Schedule trigger */}
         <button
@@ -1791,20 +1894,22 @@ export function App() {
 
         {/* Filter Tabs */}
         <div className="flex items-center space-x-1.5 bg-slate-200/70 p-1 rounded-2xl text-xs font-semibold overflow-x-auto no-scrollbar scroll-smooth">
-          <button
-            onClick={() => setActiveTab('my_chores')}
-            className={`px-3 py-1.5 rounded-xl transition flex items-center space-x-1 shrink-0 whitespace-nowrap ${
-              activeTab === 'my_chores'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <UserCheck className="w-3.5 h-3.5" />
-            <span>Của tôi ({myChores.length})</span>
-            {myPendingCount > 0 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            )}
-          </button>
+          {!isAdmin && (
+            <button
+              onClick={() => setActiveTab('my_chores')}
+              className={`px-3 py-1.5 rounded-xl transition flex items-center space-x-1 shrink-0 whitespace-nowrap ${
+                activeTab === 'my_chores'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Của tôi ({myChores.length})</span>
+              {myPendingCount > 0 && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              )}
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('today_all')}
