@@ -16,7 +16,8 @@ import {
   Database,
   ArrowRight,
   Copy,
-  Check
+  Check,
+  RotateCcw
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { 
@@ -31,8 +32,10 @@ import {
   clearAllCloudData, 
   CloudRoomData, 
   getSupabaseConfig,
-  saveSupabaseConfig
+  saveSupabaseConfig,
+  resetAllChoresAndPointsKeepRoomsAndMembers
 } from '../utils/supabase';
+import { resetLocalChoresAndPoints } from '../utils/storage';
 
 interface AdminDashboardProps {
   adminUser: UserAccount;
@@ -63,6 +66,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Danger wipe
   const [isWiping, setIsWiping] = useState(false);
+  const [isResettingChores, setIsResettingChores] = useState(false);
 
   // Supabase Cloud Configuration
   const currentCfg = getSupabaseConfig();
@@ -270,6 +274,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // Reset Chores & Points (Keep rooms & members)
+  const handleResetChoresAndPoints = async () => {
+    if (
+      !window.confirm(
+        '🧹 XÁC NHẬN ĐẶT LẠI CÔNG VIỆC & ĐIỂM SỐ:\n\nThao tác này sẽ:\n- Xóa sạch toàn bộ công việc nhà và nhật ký làm việc trong tất cả các phòng.\n- Đặt lại số điểm và streak của tất cả thành viên về 0.\n- BẢO LƯU 100% tất cả các phòng trọ và tài khoản thành viên hiện có.\n\nBạn có chắc chắn muốn thực hiện?'
+      )
+    ) {
+      return;
+    }
+
+    setIsResettingChores(true);
+    try {
+      const res = await resetAllChoresAndPointsKeepRoomsAndMembers();
+      resetLocalChoresAndPoints();
+      setIsResettingChores(false);
+
+      if (res.success) {
+        showToast(`✓ Đã xóa sạch việc & đặt lại điểm về 0 cho ${res.roomsResetCount || 0} phòng!`);
+        loadAllData();
+      } else {
+        showToast(`❌ Thao tác thất bại: ${res.error}`);
+      }
+    } catch (e: any) {
+      setIsResettingChores(false);
+      showToast(`❌ Lỗi: ${e?.message}`);
+    }
+  };
+
   const totalChoresCount = useMemo(() => {
     return rooms.reduce((sum, r) => sum + r.choreCount, 0);
   }, [rooms]);
@@ -393,6 +425,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Quick Action: Reset Chores & Points while keeping rooms & users */}
+        <div className="p-3 bg-slate-800/60 border border-slate-700/60 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+              <RotateCcw className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-white flex items-center space-x-1.5">
+                <span>Đặt Lại Công Việc & Điểm Số</span>
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded-md border border-emerald-500/20">
+                  Bảo lưu phòng & thành viên
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Xóa sạch việc và reset điểm về 0 để bắt đầu chu kỳ mới, giữ nguyên 100% tài khoản và phòng trọ.
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={isResettingChores}
+            onClick={handleResetChoresAndPoints}
+            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center justify-center space-x-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${isResettingChores ? 'animate-spin' : ''}`} />
+            <span>{isResettingChores ? 'Đang thực hiện...' : 'Xóa Việc & Reset Điểm'}</span>
+          </button>
         </div>
 
         {/* Tab Controls & Search */}
@@ -769,6 +831,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   Lưu Cấu Hình Supabase Cloud
                 </button>
               </form>
+            </div>
+
+            {/* Safe Reset: Clear chores & reset points, keep rooms & members */}
+            <div className="p-4 bg-amber-950/30 rounded-2xl border border-amber-800/50 space-y-3">
+              <div className="flex items-center space-x-2 text-amber-400 font-bold text-sm">
+                <RotateCcw className="w-4 h-4" />
+                <span>Đặt Lại Công Việc & Điểm Số (Giữ Phòng & Thành Viên)</span>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Xóa sạch toàn bộ công việc nhà, nhật ký làm việc và đặt lại điểm số của tất cả thành viên về 0. <strong className="text-amber-300">Tất cả các phòng và tài khoản thành viên vẫn được bảo lưu 100%</strong>.
+              </p>
+              <button
+                type="button"
+                disabled={isResettingChores}
+                onClick={handleResetChoresAndPoints}
+                className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+              >
+                <RotateCcw className={`w-4 h-4 ${isResettingChores ? 'animate-spin' : ''}`} />
+                <span>{isResettingChores ? 'Đang đặt lại...' : '🧹 Xóa Sạch Việc & Reset Điểm Về 0 (Giữ Phòng & Người)'}</span>
+              </button>
             </div>
 
             {/* Danger Zone: Wipe for Release */}

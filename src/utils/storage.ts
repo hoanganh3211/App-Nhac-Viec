@@ -416,6 +416,39 @@ export const saveState = (state: AppState): void => {
 };
 
 /**
+ * Đặt lại công việc và điểm số ở máy cục bộ (bảo toàn phòng và thành viên)
+ */
+export const resetLocalChoresAndPoints = (): void => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const resetMembers = (parsed.members || []).map((m: any) => ({
+        ...m,
+        points: 0,
+        streak: 0,
+        lateViolations: 0,
+      }));
+      const resetState: AppState = {
+        ...parsed,
+        members: resetMembers,
+        chores: [],
+        logs: [],
+        transferRequests: [],
+        proposals: [],
+        notifications: [],
+        rebalancePendingTomorrow: false,
+        updatedAt: new Date().toISOString(),
+        version: (parsed.version || 0) + 1,
+      };
+      saveState(resetState);
+    }
+  } catch (e) {
+    console.error('Failed to reset local chores and points', e);
+  }
+};
+
+/**
  * Chữ ký chuẩn hoá trạng thái (Canonical Signature) để so sánh bình đẳng
  * loại bỏ hoàn toàn sự xáo trộn thứ tự thuộc tính do PostgreSQL JSONB gây ra.
  */

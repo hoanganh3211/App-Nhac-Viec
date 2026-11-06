@@ -214,6 +214,74 @@ export const clearAllCloudData = async (): Promise<{ success: boolean; error?: s
   }
 };
 
+/**
+ * Đặt lại toàn bộ công việc và điểm số về 0 trong các phòng trên Supabase Cloud
+ * BẢO LƯU 100% tất cả các phòng trọ và danh sách thành viên/tài khoản
+ */
+export const resetAllChoresAndPointsKeepRoomsAndMembers = async (): Promise<{
+  success: boolean;
+  roomsResetCount?: number;
+  error?: string;
+}> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Chưa kết nối Supabase Cloud.' };
+
+  try {
+    const { data: rows, error: fetchErr } = await supabase
+      .from('room_states')
+      .select('room_code, state_data')
+      .neq('room_code', GLOBAL_USERS_ROOM_CODE);
+
+    if (fetchErr) {
+      return { success: false, error: fetchErr.message };
+    }
+
+    let count = 0;
+    if (rows && rows.length > 0) {
+      for (const row of rows) {
+        const state = (row.state_data as AppState) || {};
+        const resetMembers = (state.members || []).map((m) => ({
+          ...m,
+          points: 0,
+          streak: 0,
+          lateViolations: 0,
+        }));
+
+        const resetState: AppState = {
+          ...state,
+          members: resetMembers,
+          chores: [],
+          logs: [],
+          transferRequests: [],
+          proposals: [],
+          notifications: [],
+          rebalancePendingTomorrow: false,
+          updatedAt: new Date().toISOString(),
+          version: (state.version || 0) + 1,
+          lastUpdatedBy: 'admin_reset',
+        };
+
+        const { error: updateErr } = await supabase
+          .from('room_states')
+          .update({
+            state_data: resetState,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('room_code', row.room_code);
+
+        if (!updateErr) {
+          count++;
+        }
+      }
+    }
+
+    return { success: true, roomsResetCount: count };
+  } catch (err: any) {
+    console.error('Failed to reset chores and points:', err);
+    return { success: false, error: err?.message || 'Lỗi khi đặt lại công việc và điểm số.' };
+  }
+};
+
 export interface CloudRoomData {
   roomCode: string;
   roomName: string;
