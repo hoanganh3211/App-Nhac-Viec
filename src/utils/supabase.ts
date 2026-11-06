@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AppState, UserAccount, ChoreLog } from '../types';
-import { autoBalanceChores, isChoreScheduledToday, getTodayDateString } from './storage';
+import { autoBalanceChores, isChoreScheduledToday, getTodayDateString, getNextAssignee } from './storage';
 
 const SUPABASE_CONFIG_KEY = 'app_nhac_viec_supabase_cfg';
 
@@ -661,5 +661,75 @@ export const completeAllTodayChoresForRoom = async (
     return { success: true, completedCount };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Lỗi khi hoàn thành công việc.' };
+  }
+};
+
+/**
+ * Khởi động ngày mới (7/11) cho phòng:
+ * - Đảm bảo các công việc của ngày mới là việc CHƯA LÀM (isCompletedToday: false)
+ * - Tự động xoay phiên lượt sang các bạn tiếp theo theo luật xoay vòng
+ * - Lưu giữ toàn bộ lịch sử hoàn thành và điểm số của ngày hôm trước (6/11)
+ */
+export const startNewDayChoresForRoom = async (
+  roomCode: string
+): Promise<{ success: boolean; error?: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Chưa kết nối Supabase Cloud.' };
+
+  try {
+    const cleanCode = roomCode.trim().toUpperCase();
+    const state = await fetchStateFromCloud(cleanCode);
+    if (!state) return { success: false, error: 'Không tìm thấy dữ liệu phòng.' };
+
+    const realMembers = (state.members || []).filter(
+      (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
+    );
+
+    // Cập nhật nhãn thời gian của các log hôm trước thành "06/11"
+    const updatedLogs = (state.logs || []).map((log) => {
+      if (log.dateStr === '2026-11-06' || (log.completedAt && log.completedAt.startsWith('Hôm nay'))) {
+        return {
+          ...log,
+          completedAt: log.completedAt.replace('Hôm nay', '06/11'),
+          dateStr: '2026-11-06',
+        };
+      }
+      return log;
+    });
+
+    // Xoay lượt việc cho ngày 7/11 và đặt về trạng thái chưa làm
+    const rotatedChores = (state.chores || []).map((chore) => {
+      const nextAssignee = chore.isCompletedToday
+        ? getNextAssignee(chore.assignedTo, chore.rotationRule, realMembers)
+        : chore.assignedTo;
+
+      return {
+        ...chore,
+        assignedTo: nextAssignee || (realMembers[0]?.id ?? chore.assignedTo),
+        isCompletedToday: false,
+        completedAt: undefined,
+        completedBy: undefined,
+        isLatePenalized: false,
+        redoRequest: undefined,
+      };
+    });
+
+    const newState: AppState = {
+      ...state,
+      members: realMembers,
+      chores: rotatedChores,
+      logs: updatedLogs,
+      lastDateChecked: getTodayDateString(), // 2026-11-07
+      updatedAt: new Date().toISOString(),
+      version: (state.version || 0) + 1,
+      lastUpdatedBy: 'system_start_new_day_7_11',
+    };
+
+    const pushed = await pushStateToCloud(newState);
+    if (!pushed) return { success: false, error: 'Không thể cập nhật lên Cloud.' };
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Lỗi khi khởi động ngày mới.' };
   }
 };

@@ -18,7 +18,8 @@ import {
   handleDayRollover, 
   isChoreScheduledToday,
   getCanonicalStateSignature,
-  mergeStates
+  mergeStates,
+  getNextAssignee
 } from './utils/storage';
 import { playSuccessSound, playNudgeSound } from './utils/audio';
 import { 
@@ -32,7 +33,7 @@ import {
   getSupabaseClient, 
   pushStateToCloud, 
   fetchStateFromCloud,
-  completeAllTodayChoresForRoom 
+  startNewDayChoresForRoom
 } from './utils/supabase';
 import { Navbar } from './components/Navbar';
 import { PersonalTaskBanner } from './components/PersonalTaskBanner';
@@ -303,97 +304,66 @@ export function App() {
     }
   }, [hasActiveRoom, showToast]);
 
-  // Tự động đảm bảo toàn bộ công việc hôm nay của phòng P-VZOX đã hoàn thành trên Cloud Supabase
+  // Đảm bảo toàn bộ công việc ngày 7/11 của phòng P-VZOX là công việc mới chưa làm (tính bắt đầu từ mai sau ngày 6/11)
   useEffect(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const key = `cloud_auto_done_pvzox_${todayStr}`;
-    if (!sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, 'true');
-      completeAllTodayChoresForRoom('P-VZOX').catch(console.error);
+    const key = 'pvzox_cloud_fresh_start_7_11_v1';
+    if (!localStorage.getItem(key)) {
+      localStorage.setItem(key, 'true');
+      startNewDayChoresForRoom('P-VZOX')
+        .then(() => {
+          if (state.roomCode?.toUpperCase() === 'P-VZOX') {
+            syncWithCloud('P-VZOX');
+          }
+        })
+        .catch(console.error);
     }
-  }, []);
+  }, [state.roomCode, syncWithCloud]);
 
-  // Xử lý hoàn thành toàn bộ công việc hôm nay cho phòng P-VZOX theo yêu cầu người dùng
+  // Đảm bảo tại phòng P-VZOX hôm nay (7/11) các công việc ở trạng thái chưa hoàn thành để mọi người làm
   useEffect(() => {
     if (!hasActiveRoom || state.roomCode?.toUpperCase() !== 'P-VZOX') return;
-    const todayStr = getTodayDateString();
-    const hasUncompleted = (state.chores || []).some((c) => !c.isCompletedToday);
-    if (!hasUncompleted) return;
+    const key = 'pvzox_local_fresh_start_2026-11-07_v1';
+    if (localStorage.getItem(key)) return;
 
-    const oneTimeKey = `pvzox_done_today_${todayStr}`;
-    if (sessionStorage.getItem(oneTimeKey)) return;
-    sessionStorage.setItem(oneTimeKey, 'true');
-
-    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    const memberPointsDelta: Record<string, number> = {};
-    const newLogs: ChoreLog[] = [];
-
-    const updatedChores = (state.chores || []).map((chore) => {
-      if (!chore.isCompletedToday) {
-        const assignee = (state.members || []).find((m) => m.id === chore.assignedTo);
-        const assigneeName = assignee?.name || 'Thành viên';
-        memberPointsDelta[chore.assignedTo] =
-          (memberPointsDelta[chore.assignedTo] || 0) + chore.points;
-
-        newLogs.push({
-          id: 'log_all_done_' + Date.now() + '_' + chore.id,
-          choreId: chore.id,
-          choreTitle: chore.title,
-          memberId: chore.assignedTo,
-          memberName: assigneeName,
-          completedAt: `Hôm nay ${nowTimeStr}`,
-          pointsEarned: chore.points,
-          type: 'completed',
-          dateStr: todayStr,
-          note: `Đã hoàn thành việc hôm nay (+${chore.points}đ). Bắt đầu chu kỳ mới từ mai!`,
-        });
-
+    const hasAnyCompleted = (state.chores || []).some((c) => c.isCompletedToday);
+    if (hasAnyCompleted) {
+      localStorage.setItem(key, 'true');
+      const realMembers = (state.members || []).filter(
+        (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
+      );
+      const resetChores = (state.chores || []).map((chore) => {
+        const nextAssignee = chore.isCompletedToday
+          ? getNextAssignee(chore.assignedTo, chore.rotationRule, realMembers)
+          : chore.assignedTo;
         return {
           ...chore,
-          isCompletedToday: true,
-          completedAt: `Hôm nay ${nowTimeStr}`,
-          completedBy: chore.assignedTo,
+          assignedTo: nextAssignee || (realMembers[0]?.id ?? chore.assignedTo),
+          isCompletedToday: false,
+          completedAt: undefined,
+          completedBy: undefined,
           isLatePenalized: false,
           redoRequest: undefined,
         };
-      }
-      return chore;
-    });
+      });
 
-    const updatedMembers = (state.members || []).map((m) => {
-      const delta = memberPointsDelta[m.id] || 0;
-      return {
-        ...m,
-        points: (m.points || 0) + delta,
-        streak: delta > 0 ? Math.max(m.streak || 0, 1) : m.streak,
-        lateViolations: 0,
+      const newState: AppState = {
+        ...state,
+        members: realMembers,
+        chores: resetChores,
+        lastDateChecked: getTodayDateString(),
+        updatedAt: new Date().toISOString(),
+        version: (state.version || 0) + 1,
+        lastUpdatedBy: 'system_fresh_start_7_11',
       };
-    });
 
-    const newState: AppState = {
-      ...state,
-      members: updatedMembers.filter(
-        (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
-      ),
-      chores: updatedChores,
-      logs: [...newLogs, ...(state.logs || [])].slice(0, 100),
-      lastDateChecked: todayStr,
-      updatedAt: new Date().toISOString(),
-      version: (state.version || 0) + 1,
-      lastUpdatedBy: 'pvzox_complete_all_today',
-    };
-
-    lastCanonicalSigRef.current = getCanonicalStateSignature(newState);
-    isRemoteUpdateRef.current = true;
-    setState(newState);
-    saveState(newState);
-    pushStateToCloud(newState).catch(console.error);
-    showToast('✨ Tất cả công việc hôm nay của phòng P-VZOX đã hoàn thành! Bắt đầu tính chu kỳ mới từ mai.');
-  }, [hasActiveRoom, state.roomCode, state.chores, state.members, state.logs, showToast]);
+      lastCanonicalSigRef.current = getCanonicalStateSignature(newState);
+      isRemoteUpdateRef.current = true;
+      setState(newState);
+      saveState(newState);
+      pushStateToCloud(newState).catch(console.error);
+      showToast('☀️ Chào ngày mới 7/11! Việc nhà đã xoay lượt sang các bạn mới và sẵn sàng thực hiện.');
+    }
+  }, [hasActiveRoom, state.roomCode, state.chores, state.members, showToast]);
 
   // Khi ứng dụng khởi động và có phòng hoạt động: Bắt buộc kéo từ Cloud trước khi cho phép auto-push
   useEffect(() => {

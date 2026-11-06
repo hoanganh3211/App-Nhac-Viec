@@ -127,16 +127,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   useEffect(() => {
     loadAllData();
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const key = `admin_auto_done_pvzox_${todayStr}`;
-    if (!sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, 'true');
-      completeAllTodayChoresForRoom('P-VZOX').then((res) => {
-        if (res.success && (res.completedCount || 0) > 0) {
-          loadAllData();
-        }
-      });
-    }
   }, []);
 
   // Filtered rooms
