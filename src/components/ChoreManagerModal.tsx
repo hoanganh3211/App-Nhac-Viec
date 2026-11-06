@@ -12,7 +12,7 @@ import {
   Zap, 
   Search,
   ArrowLeft,
-  ShieldAlert
+  Sparkles
 } from 'lucide-react';
 import { Chore, FrequencyType, Member, RotationRule } from '../types';
 import { DAYS_OF_WEEK, formatChoreDays } from '../utils/storage';
@@ -194,11 +194,11 @@ export const ChoreManagerModal: React.FC<ChoreManagerModalProps> = ({
         {/* LIST VIEW */}
         {activeView === 'list' && (
           <div className="p-4 overflow-y-auto space-y-3 flex-1 text-slate-700 no-scrollbar">
-            {/* Democracy Notice */}
-            <div className="p-3 bg-amber-50/80 border border-amber-200/90 rounded-2xl flex items-start space-x-2 text-amber-950 text-xs">
-              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div className="leading-relaxed">
-                <strong>Quy tắc dân chủ:</strong> Khi phòng có từ 2 người, mọi thao tác sửa hoặc xóa công việc sẽ được gửi thành đề xuất biểu quyết chung (cần &gt;50% thành viên đồng ý).
+            {/* Notice: No voting required */}
+            <div className="p-2.5 bg-indigo-50/80 border border-indigo-100 rounded-2xl flex items-center space-x-2 text-indigo-950 text-xs">
+              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+              <div className="leading-relaxed text-[11px]">
+                <strong>Thao tác trực tiếp:</strong> Bạn có thể sửa hoặc xóa công việc ngay lập tức mà không cần mọi người cùng duyệt.
               </div>
             </div>
 
