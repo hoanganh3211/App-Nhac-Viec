@@ -40,6 +40,7 @@ interface MenuDrawerProps {
   syncStatus?: 'idle' | 'syncing' | 'connected' | 'error' | 'offline';
   lastSyncTime?: Date | null;
   onManualSync?: () => void;
+  onRebalance?: () => void;
 }
 
 export const MenuDrawer: React.FC<MenuDrawerProps> = ({
@@ -64,6 +65,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   syncStatus = 'connected',
   lastSyncTime,
   onManualSync,
+  onRebalance,
 }) => {
   if (!isOpen) return null;
 
@@ -236,6 +238,30 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
           </button>
+
+          {/* Rebalance Chores */}
+          {onRebalance && (
+            <button
+              onClick={() => handleAction(onRebalance)}
+              className="w-full p-2.5 rounded-2xl hover:bg-slate-50 flex items-center justify-between text-left transition group cursor-pointer"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Scale className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-800 flex items-center space-x-1.5">
+                    <span>Tự động chia đều lại việc</span>
+                    <span className="text-[9px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.2 rounded-full">
+                      Thuật toán
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400">Cân bằng lại tải trọng việc cho mọi người</div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
+            </button>
+          )}
 
           {/* Schedule & Activity Timeline */}
           <button

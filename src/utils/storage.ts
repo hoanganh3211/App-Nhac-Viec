@@ -21,41 +21,135 @@ export const getTodayDateString = (): string => {
 };
 
 /**
- * Thuật toán phân chia công việc công bằng (Fair Workload Distribution)
- * - Sắp xếp việc từ nặng nhất đến nhẹ nhất (4đ -> 3đ -> 2đ -> 1đ)
- * - Lần lượt gán mỗi việc cho thành viên đang gánh ít điểm nhất hôm nay
- * - Đảm bảo tổng điểm việc nhà phân bổ đều nhất có thể cho tất cả mọi người
+ * Thuật toán Phân Chia & Tái Cân Bằng Công Việc Công Bằng (Smart Fair Workload Distribution)
+ * 1. Phân bổ công việc dựa trên:
+ *    - Tải trọng điểm gánh trong ngày (assignedPoints)
+ *    - Điểm tích lũy hiện có của thành viên (basePoints)
+ *    - Số lượng công việc được giao (choreCount)
+ * 2. Giải quyết triệt để trường hợp mọi người bằng điểm nhau (ví dụ cùng 0đ khi bắt đầu):
+ *    - Dùng cơ chế Round-Robin Tie-Breaker xoay vòng chỉ số để chia đều việc, không dồn vào người đầu danh sách.
+ * 3. Khi thêm việc mới hoặc tái cân bằng:
+ *    - Tính toán lại toàn bộ các việc chưa hoàn thành trong phòng để phân chia lại tối ưu nhất.
+ *    - Bảo toàn nguyên vẹn các việc đã làm xong hôm nay (isCompletedToday) và việc đang được nhượng (originalAssignee).
  */
-export const autoBalanceChores = (chores: Chore[], members: Member[]): Chore[] => {
+export const autoBalanceChores = (
+  chores: Chore[],
+  members: Member[],
+  options?: {
+    preserveCompleted?: boolean;
+    excludedChoreIds?: string[];
+  }
+): Chore[] => {
   if (!members.length || !chores.length) return chores;
 
-  // Khởi tạo điểm việc gánh trong ngày của từng người
-  const memberDailyLoad: Record<string, number> = {};
+  const preserveCompleted = options?.preserveCompleted ?? true;
+  const excludedChoreIds = new Set(options?.excludedChoreIds || []);
+
+  // 1. Tách công việc cố định (không đổi) và công việc cần phân bổ lại
+  const fixedChores: Chore[] = [];
+  const choresToBalance: Chore[] = [];
+
+  for (const chore of chores) {
+    if (excludedChoreIds.has(chore.id)) {
+      fixedChores.push(chore);
+    } else if (chore.originalAssignee) {
+      fixedChores.push(chore);
+    } else if (preserveCompleted && chore.isCompletedToday) {
+      fixedChores.push(chore);
+    } else {
+      choresToBalance.push(chore);
+    }
+  }
+
+  // 2. Khởi tạo bảng tải trọng của từng thành viên
+  const memberLoad: Record<
+    string,
+    {
+      basePoints: number;
+      assignedPoints: number;
+      choreCount: number;
+    }
+  > = {};
+
   members.forEach((m) => {
-    memberDailyLoad[m.id] = 0;
+    memberLoad[m.id] = {
+      basePoints: m.points || 0,
+      assignedPoints: 0,
+      choreCount: 0,
+    };
   });
 
-  // Sắp xếp việc nặng ưu tiên phân chia trước
-  const sortedChores = [...chores].sort((a, b) => b.points - a.points);
-
-  return sortedChores.map((chore) => {
-    // Nếu việc này đang được người khác nhận nhượng việc hoặc có quy định riêng thì giữ nguyên
-    if (chore.originalAssignee) {
-      return chore;
+  // Cộng dồn điểm của các việc cố định / đã làm xong hôm nay
+  for (const fixed of fixedChores) {
+    if (fixed.assignedTo && memberLoad[fixed.assignedTo]) {
+      memberLoad[fixed.assignedTo].assignedPoints += fixed.points;
+      memberLoad[fixed.assignedTo].choreCount += 1;
     }
+  }
 
-    // Tìm thành viên đang có khối lượng công việc hôm nay nhẹ nhất
-    const sortedMembers = [...members].sort(
-      (a, b) => memberDailyLoad[a.id] - memberDailyLoad[b.id]
-    );
-    const chosenMember = sortedMembers[0];
-    memberDailyLoad[chosenMember.id] += chore.points;
+  // Kiểm tra xem tất cả thành viên có bằng điểm tích lũy nhau không (ví dụ cùng 0đ)
+  const firstBase = members[0].points || 0;
+  const allEqualBasePoints = members.every((m) => (m.points || 0) === firstBase);
+
+  // 3. Sắp xếp các việc cần chia từ nặng nhất đến nhẹ nhất (4đ -> 3đ -> 2đ -> 1đ)
+  const sortedToBalance = [...choresToBalance].sort((a, b) => {
+    if (b.points !== a.points) {
+      return b.points - a.points;
+    }
+    return a.id.localeCompare(b.id);
+  });
+
+  // Biến đếm xoay vòng luân phiên khi hòa điểm (Round-Robin Tie-Breaker)
+  let tieBreakerOffset = 0;
+
+  // 4. Lần lượt phân bổ từng công việc cho người tối ưu nhất
+  const newlyAssignedChores = sortedToBalance.map((chore) => {
+    const sortedCandidates = [...members].sort((a, b) => {
+      const loadA = memberLoad[a.id];
+      const loadB = memberLoad[b.id];
+
+      // Tiêu chí 1: Người đang gánh ít điểm hôm nay nhất
+      if (loadA.assignedPoints !== loadB.assignedPoints) {
+        return loadA.assignedPoints - loadB.assignedPoints;
+      }
+
+      // Tiêu chí 2: Nếu điểm gánh hôm nay bằng nhau, kiểm tra điểm tích lũy (nếu không bằng nhau)
+      // Người ít điểm tích lũy hơn được ưu tiên để tích điểm
+      if (!allEqualBasePoints && loadA.basePoints !== loadB.basePoints) {
+        return loadA.basePoints - loadB.basePoints;
+      }
+
+      // Tiêu chí 3: Người đang gánh ít số lượng việc hơn (choreCount)
+      if (loadA.choreCount !== loadB.choreCount) {
+        return loadA.choreCount - loadB.choreCount;
+      }
+
+      // Tiêu chí 4: Khi tất cả đều bằng nhau (như khi mọi người cùng 0đ và 0 việc):
+      // Xoay vòng luân phiên đều đặn qua các thành viên theo lượt
+      const indexA = members.findIndex((m) => m.id === a.id);
+      const indexB = members.findIndex((m) => m.id === b.id);
+      const relA = (indexA - tieBreakerOffset + members.length) % members.length;
+      const relB = (indexB - tieBreakerOffset + members.length) % members.length;
+      return relA - relB;
+    });
+
+    const chosen = sortedCandidates[0];
+    memberLoad[chosen.id].assignedPoints += chore.points;
+    memberLoad[chosen.id].choreCount += 1;
+    tieBreakerOffset = (tieBreakerOffset + 1) % members.length;
 
     return {
       ...chore,
-      assignedTo: chosenMember.id,
+      assignedTo: chosen.id,
     };
   });
+
+  // 5. Trả về mảng việc bảo toàn nguyên vẹn thứ tự ban đầu
+  const resultMap = new Map<string, Chore>();
+  fixedChores.forEach((c) => resultMap.set(c.id, c));
+  newlyAssignedChores.forEach((c) => resultMap.set(c.id, c));
+
+  return chores.map((orig) => resultMap.get(orig.id) || orig);
 };
 
 export const INITIAL_STATE: AppState = {

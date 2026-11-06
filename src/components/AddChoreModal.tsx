@@ -36,17 +36,9 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5, 6, 0]);
   const [frequency, setFrequency] = useState<FrequencyType>('daily');
   const [dueTime, setDueTime] = useState('21:00');
-  const [assignedTo, setAssignedTo] = useState('');
+  const [assignedTo, setAssignedTo] = useState('auto');
   const [rotationRule, setRotationRule] = useState<RotationRule>('least-points');
   const [description, setDescription] = useState('');
-
-  // Tự động gợi ý giao việc cho người đang ít điểm nhất để đảm bảo công bằng từ đầu
-  useEffect(() => {
-    if (members.length > 0) {
-      const sortedByPoints = [...members].sort((a, b) => a.points - b.points);
-      setAssignedTo(sortedByPoints[0]?.id || members[0]?.id);
-    }
-  }, [members, isOpen]);
 
   // Nếu chọn "Làm 1 lần duy nhất", cố định người làm và mặc định ngày hôm nay nếu chưa chọn
   useEffect(() => {
@@ -126,7 +118,11 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !assignedTo) return;
+    if (!title.trim()) return;
+
+    const finalAssignedTo = (!assignedTo || assignedTo === 'auto')
+      ? (members[0]?.id || '')
+      : assignedTo;
 
     onAddChore({
       title: title.trim(),
@@ -136,7 +132,7 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
       frequency,
       daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : [todayDayIndex],
       dueTime,
-      assignedTo,
+      assignedTo: finalAssignedTo,
       rotationRule: frequency === 'once' ? 'fixed' : rotationRule,
       description: description.trim(),
     });
@@ -446,6 +442,9 @@ export const AddChoreModal: React.FC<AddChoreModalProps> = ({
                 onChange={(e) => setAssignedTo(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
               >
+                <option value="auto">
+                  🤖 Tự động chia đều công bằng (Khuyên dùng)
+                </option>
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.avatar} {m.name} ({m.points}đ)

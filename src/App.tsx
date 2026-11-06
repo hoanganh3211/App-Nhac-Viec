@@ -1151,39 +1151,70 @@ export function App() {
     showToast(`Đã chuẩn bị lời nhắc cho ${assignee?.name}! Hãy dán vào Zalo nhé.`);
   };
 
-  // Thêm công việc trực tiếp (Luật mới: Ai cũng có thể thêm việc ngay lập tức, không cần chờ bỏ phiếu)
+  // Thêm công việc trực tiếp (Luật mới: Ai cũng có thể thêm việc, tự động dùng thuật toán chia đều toàn phòng)
   const handleAddChore = (newChoreData: Omit<Chore, 'id' | 'isCompletedToday'>) => {
+    const newChoreId = 'chore_' + Date.now();
     const newChore: Chore = {
       ...newChoreData,
-      id: 'chore_' + Date.now(),
+      id: newChoreId,
       isCompletedToday: false,
     };
+
+    // Khi thêm việc mới: Tự động chạy thuật toán tái cân bằng toàn bộ công việc trong phòng
+    // để tính toán lại điểm gánh của mọi người, đảm bảo công bằng kể cả khi mọi người bằng điểm nhau
+    const combinedChores = [newChore, ...state.chores];
+    const balancedChores = autoBalanceChores(combinedChores, state.members, {
+      preserveCompleted: true,
+    });
+
+    const assignedChore = balancedChores.find((c) => c.id === newChoreId) || newChore;
+    const assignedMember = state.members.find((m) => m.id === assignedChore.assignedTo);
 
     const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const creatorName = currentMember?.name || 'Thành viên';
     const creatorId = currentMember?.id || currentUserId || 'm_unknown';
     const isOnce = newChoreData.frequency === 'once';
-    const assignedMember = state.members.find((m) => m.id === newChore.assignedTo);
 
     const newNotification: AppNotification = {
       id: 'notif_' + Date.now(),
       title: isOnce ? '⚡ Việc phát sinh mới (1 lần)' : '📋 Công việc mới được thêm',
-      message: `${creatorName} vừa thêm việc "${newChore.title}" (+${newChore.points}đ). Phân công: ${
+      message: `${creatorName} vừa thêm việc "${assignedChore.title}" (+${assignedChore.points}đ). Thuật toán đã tự động cân bằng & phân công cho: ${
         assignedMember?.name || 'Tự động luân phiên'
       }.`,
       type: 'chore_completed',
       createdAt: `Hôm nay ${nowTimeStr}`,
       readBy: [creatorId],
-      choreId: newChore.id,
+      choreId: assignedChore.id,
     };
 
     setState((prev) => ({
       ...prev,
-      chores: [newChore, ...prev.chores],
+      chores: balancedChores,
       notifications: [newNotification, ...(prev.notifications || [])],
     }));
 
-    showToast(`🎉 Đã thêm việc "${newChore.title}" (+${newChore.points}đ) vào phòng!`);
+    showToast(
+      `🎉 Đã thêm "${assignedChore.title}" (+${assignedChore.points}đ) & thuật toán đã tự động chia đều cho ${assignedMember?.name || 'thành viên'}!`
+    );
+  };
+
+  // Tái cân bằng toàn bộ công việc nhà trong phòng theo thuật toán công bằng
+  const handleRebalanceChores = () => {
+    if (state.members.length === 0 || state.chores.length === 0) {
+      showToast('Phòng chưa có công việc hoặc thành viên để phân chia.');
+      return;
+    }
+
+    const balancedChores = autoBalanceChores(state.chores, state.members, {
+      preserveCompleted: true,
+    });
+
+    setState((prev) => ({
+      ...prev,
+      chores: balancedChores,
+    }));
+
+    showToast('⚖️ Đã dùng thuật toán phân chia lại toàn bộ công việc đồng đều cho mọi người!');
   };
 
   // Đề xuất xóa thành viên (Nếu phòng > 1 người -> Cần biểu quyết quá bán)
@@ -1766,6 +1797,7 @@ export function App() {
         {/* Fairness & Karma Board */}
         <FairnessBoard 
           members={state.members} 
+          onRebalance={handleRebalanceChores}
         />
 
         {/* Filter Tabs */}
@@ -1902,6 +1934,7 @@ export function App() {
         syncStatus={syncStatus}
         lastSyncTime={lastSyncTime}
         onManualSync={() => syncWithCloud(state.roomCode, true)}
+        onRebalance={handleRebalanceChores}
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
         onOpenChoreManager={() => setIsChoreManagerOpen(true)}
