@@ -18,6 +18,8 @@ import {
   requestNotificationPermission,
   sendBrowserNotification,
   checkUpcomingChoresAndNotify,
+  checkDailyTimeSlotsAndNotify,
+  sendInstantChoreSummary,
 } from './utils/notifications';
 import {
   getSupabaseClient,
@@ -329,30 +331,33 @@ export function App() {
     return () => clearInterval(interval);
   }, [hasActiveRoom, authUser]);
 
-  // Tự động kiểm tra thời hạn và nhắc việc bằng chuông & thông báo đẩy
+  // Tự động kiểm tra thời hạn và nhắc việc đều đặn theo khung giờ trong ngày
   useEffect(() => {
     if (!hasActiveRoom || !authUser || !currentUserId) return;
-    checkUpcomingChoresAndNotify(state.chores, currentUserId);
-    const interval = setInterval(() => {
-      checkUpcomingChoresAndNotify(stateRef.current.chores, currentUserIdRef.current);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [hasActiveRoom, authUser, currentUserId]);
+    const memberName = currentMember?.name || authUser.username || 'bạn';
 
-  // Bật/tắt hoặc thử chuông thông báo
+    const runChecks = () => {
+      checkUpcomingChoresAndNotify(stateRef.current.chores, currentUserIdRef.current);
+      checkDailyTimeSlotsAndNotify(stateRef.current.chores, currentUserIdRef.current, memberName);
+    };
+
+    runChecks();
+    const interval = setInterval(runChecks, 30000);
+    return () => clearInterval(interval);
+  }, [hasActiveRoom, authUser, currentUserId, currentMember?.name]);
+
+  // Bật/tắt hoặc gửi thông báo tóm tắt các việc chưa làm ngay lập tức
   const handleToggleNotification = async () => {
+    const memberName = currentMember?.name || authUser?.username || 'bạn';
     if (notificationPermission === 'granted') {
-      sendBrowserNotification('🔔 Chuông nhắc việc đã sẵn sàng!', {
-        body: 'Hệ thống sẽ nhắc nhở khi đến giờ làm việc hoặc khi bạn cùng phòng hoàn thành việc.',
-        tag: 'test_notification',
-        soundType: 'bell',
-      });
-      showToast('🔔 Chuông nhắc việc & thông báo đẩy đang hoạt động!');
+      sendInstantChoreSummary(state.chores, currentUserId, memberName);
+      showToast('🔔 Đã gửi thông báo tóm tắt các việc chưa làm & phát chuông!');
     } else {
       const granted = await requestNotificationPermission();
       setNotificationPermission(granted ? 'granted' : 'denied');
       if (granted) {
         showToast('🔔 Đã bật chuông & thông báo nhắc việc thành công!');
+        sendInstantChoreSummary(state.chores, currentUserId, memberName);
       } else {
         showToast('⚠️ Vui lòng cho phép quyền thông báo trên trình duyệt của bạn.');
       }

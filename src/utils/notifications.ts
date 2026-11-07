@@ -17,8 +17,9 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
     const perm = await Notification.requestPermission();
     if (perm === 'granted') {
       sendBrowserNotification('🔔 Đã bật thông báo thành công!', {
-        body: 'ViệcNhà sẽ nhắc nhở bạn khi sắp đến giờ làm việc và khi bạn cùng phòng hoàn thành việc.',
+        body: 'ViệcNhà sẽ nhắc nhở đều đặn các khung giờ trong ngày và khi bạn cùng phòng hoàn thành việc.',
         tag: 'welcome_notification',
+        soundType: 'bell',
       });
       return true;
     }
@@ -82,7 +83,109 @@ export const sendBrowserNotification = async (
 };
 
 /**
- * Tự động kiểm tra thời hạn các công việc của người dùng hôm nay và đẩy thông báo nhắc nhở
+ * Cấu hình các khung giờ nhắc việc đều đặn trong ngày
+ * 1. 08:00 - 11:00 (Sáng): Điểm danh việc cần làm trong ngày
+ * 2. 12:00 - 14:00 (Trưa): Nhắc tiến độ trưa cho các việc chưa làm
+ * 3. 18:00 - 20:30 (Chiều tối): Nhắc việc buổi tối trước giờ ăn/nghỉ ngơi
+ * 4. 21:00 - 23:59 (Tối muộn): Nhắc việc sát hạn chót đêm
+ */
+interface ReminderSlot {
+  id: string;
+  startMinutes: number; // Số phút tính từ 00:00
+  endMinutes: number;
+  title: (name: string, count: number) => string;
+  getPrefix: (count: number) => string;
+  soundType: 'bell' | 'chime' | 'marimba';
+}
+
+const DAILY_REMINDER_SLOTS: ReminderSlot[] = [
+  {
+    id: 'morning',
+    startMinutes: 8 * 60, // 08:00
+    endMinutes: 11 * 60,  // 11:00
+    title: (name, count) => `☀️ Chào buổi sáng ${name}! (Còn ${count} việc hôm nay)`,
+    getPrefix: (count) => `Danh sách ${count} việc cần làm hôm nay:`,
+    soundType: 'bell',
+  },
+  {
+    id: 'noon',
+    startMinutes: 12 * 60, // 12:00
+    endMinutes: 14 * 60,   // 14:00
+    title: (name, count) => `🍲 Nhắc việc buổi trưa, ${name}! (${count} việc)`,
+    getPrefix: (count) => `Bạn vẫn còn ${count} việc chưa hoàn thành:`,
+    soundType: 'chime',
+  },
+  {
+    id: 'evening',
+    startMinutes: 18 * 60, // 18:00
+    endMinutes: 20 * 60 + 30, // 20:30
+    title: (name, count) => `🌆 Nhắc việc chiều tối, ${name}! (${count} việc)`,
+    getPrefix: (count) => `Còn ${count} việc cần hoàn thành trước khi hết ngày:`,
+    soundType: 'bell',
+  },
+  {
+    id: 'night',
+    startMinutes: 21 * 60, // 21:00
+    endMinutes: 23 * 60 + 59, // 23:59
+    title: (name, count) => `🌙 Nhắc việc tối muộn, ${name}! (${count} việc)`,
+    getPrefix: (count) => `Đừng quên hoàn tất ${count} việc còn lại nhé:`,
+    soundType: 'chime',
+  },
+];
+
+/**
+ * Đều đặn kiểm tra các khung giờ trong ngày để gửi thông báo tóm tắt các việc chưa làm
+ */
+export const checkDailyTimeSlotsAndNotify = (
+  chores: Chore[],
+  currentUserId: string | null,
+  memberName: string = 'bạn'
+) => {
+  if (!currentUserId || !isNotificationSupported() || Notification.permission !== 'granted') {
+    return;
+  }
+
+  const todayStr = getTodayDateString();
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  // Lấy các công việc của thành viên được lên lịch làm hôm nay và CHƯA HOÀN THÀNH
+  const myPendingChores = chores.filter(
+    (c) => c.assignedTo === currentUserId && isChoreScheduledToday(c) && !c.isCompletedToday
+  );
+
+  // Nếu đã làm xong hết, không cần làm phiền
+  if (myPendingChores.length === 0) return;
+
+  DAILY_REMINDER_SLOTS.forEach((slot) => {
+    // Nếu giờ hiện tại nằm trong khung giờ của slot
+    if (currentMinutes >= slot.startMinutes && currentMinutes <= slot.endMinutes) {
+      const storageKey = `notif_slot_${todayStr}_${slot.id}_${currentUserId}`;
+      // Chỉ gửi đúng 1 lần cho mỗi khung giờ trong ngày
+      if (!localStorage.getItem(storageKey)) {
+        localStorage.setItem(storageKey, 'true');
+
+        const choreListStr = myPendingChores
+          .slice(0, 3)
+          .map((c) => `• ${c.title} (${c.dueTime})`)
+          .join('\n');
+        const moreCount =
+          myPendingChores.length > 3
+            ? `\n... và ${myPendingChores.length - 3} việc khác`
+            : '';
+
+        sendBrowserNotification(slot.title(memberName, myPendingChores.length), {
+          body: `${slot.getPrefix(myPendingChores.length)}\n${choreListStr}${moreCount}`,
+          tag: `daily_slot_${slot.id}_${todayStr}`,
+          soundType: slot.soundType,
+        });
+      }
+    }
+  });
+};
+
+/**
+ * Tự động kiểm tra thời hạn từng công việc của người dùng hôm nay và đẩy thông báo sát hạn
  */
 export const checkUpcomingChoresAndNotify = (
   chores: Chore[],
@@ -133,4 +236,40 @@ export const checkUpcomingChoresAndNotify = (
       }
     }
   });
+};
+
+/**
+ * Gửi thông báo tóm tắt tức thì tình trạng công việc của thành viên (dùng khi bấm chuông kiểm tra)
+ */
+export const sendInstantChoreSummary = (
+  chores: Chore[],
+  currentUserId: string | null,
+  memberName: string = 'bạn'
+) => {
+  const myPendingChores = chores.filter(
+    (c) => c.assignedTo === currentUserId && isChoreScheduledToday(c) && !c.isCompletedToday
+  );
+
+  if (myPendingChores.length === 0) {
+    sendBrowserNotification(`🎉 Tuyệt vời, ${memberName}!`, {
+      body: 'Bạn đã hoàn thành hết toàn bộ công việc nhà của hôm nay rồi. Hãy nghỉ ngơi nhé!',
+      tag: 'summary_all_done',
+      soundType: 'marimba',
+    });
+  } else {
+    const choreListStr = myPendingChores
+      .slice(0, 3)
+      .map((c) => `• ${c.title} (${c.dueTime})`)
+      .join('\n');
+    const moreCount =
+      myPendingChores.length > 3
+        ? `\n... và ${myPendingChores.length - 3} việc khác`
+        : '';
+
+    sendBrowserNotification(`📋 ${memberName} ơi, còn ${myPendingChores.length} việc chưa làm!`, {
+      body: `Các việc cần làm hôm nay:\n${choreListStr}${moreCount}`,
+      tag: `summary_pending_${Date.now()}`,
+      soundType: 'bell',
+    });
+  }
 };
