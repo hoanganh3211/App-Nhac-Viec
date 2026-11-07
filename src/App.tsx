@@ -14,6 +14,12 @@ import {
 } from './utils/storage';
 import { playSuccessSound } from './utils/audio';
 import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  sendBrowserNotification,
+  checkUpcomingChoresAndNotify,
+} from './utils/notifications';
+import {
   getSupabaseClient,
   pushStateToCloud,
   fetchStateFromCloud,
@@ -68,6 +74,12 @@ export function App() {
   // Refs
   const stateRef = useRef(state);
   stateRef.current = state;
+  const currentUserIdRef = useRef(currentUserId);
+  currentUserIdRef.current = currentUserId;
+
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
+    getNotificationPermission()
+  );
 
   const [clientId] = useState<string>(() => {
     try {
@@ -241,6 +253,21 @@ export function App() {
             const currentSig = getCanonicalStateSignature(stateRef.current);
             if (incomingSig === currentSig || incomingSig === lastCanonicalSigRef.current) return;
 
+            // Báo chuông & thông báo đẩy khi bạn cùng phòng hoàn thành việc
+            const oldChores = stateRef.current.chores || [];
+            (incomingState.chores || []).forEach((newChore) => {
+              const oldChore = oldChores.find((c) => c.id === newChore.id);
+              if (oldChore && !oldChore.isCompletedToday && newChore.isCompletedToday) {
+                const completer = (incomingState.members || []).find((m) => m.id === newChore.assignedTo);
+                const completerName = completer?.name || 'Bạn cùng phòng';
+                sendBrowserNotification(`🎉 ${completerName} vừa làm xong!`, {
+                  body: `Đã hoàn thành "${newChore.title}" (+${newChore.points}đ).`,
+                  tag: `comp_${newChore.id}`,
+                  soundType: 'pop',
+                });
+              }
+            });
+
             const merged = mergeStates(stateRef.current, incomingState);
             lastCanonicalSigRef.current = getCanonicalStateSignature(merged);
             isRemoteUpdateRef.current = true;
@@ -301,6 +328,36 @@ export function App() {
     const interval = setInterval(check, 60000);
     return () => clearInterval(interval);
   }, [hasActiveRoom, authUser]);
+
+  // Tự động kiểm tra thời hạn và nhắc việc bằng chuông & thông báo đẩy
+  useEffect(() => {
+    if (!hasActiveRoom || !authUser || !currentUserId) return;
+    checkUpcomingChoresAndNotify(state.chores, currentUserId);
+    const interval = setInterval(() => {
+      checkUpcomingChoresAndNotify(stateRef.current.chores, currentUserIdRef.current);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [hasActiveRoom, authUser, currentUserId]);
+
+  // Bật/tắt hoặc thử chuông thông báo
+  const handleToggleNotification = async () => {
+    if (notificationPermission === 'granted') {
+      sendBrowserNotification('🔔 Chuông nhắc việc đã sẵn sàng!', {
+        body: 'Hệ thống sẽ nhắc nhở khi đến giờ làm việc hoặc khi bạn cùng phòng hoàn thành việc.',
+        tag: 'test_notification',
+        soundType: 'bell',
+      });
+      showToast('🔔 Chuông nhắc việc & thông báo đẩy đang hoạt động!');
+    } else {
+      const granted = await requestNotificationPermission();
+      setNotificationPermission(granted ? 'granted' : 'denied');
+      if (granted) {
+        showToast('🔔 Đã bật chuông & thông báo nhắc việc thành công!');
+      } else {
+        showToast('⚠️ Vui lòng cho phép quyền thông báo trên trình duyệt của bạn.');
+      }
+    }
+  };
 
   // Toggle chore complete
   const handleToggleComplete = (choreId: string) => {
@@ -735,6 +792,8 @@ export function App() {
         roomName={state.roomName}
         onOpenAddChore={() => setIsAddChoreOpen(true)}
         onOpenMenu={() => setIsMenuOpen(true)}
+        isNotificationEnabled={notificationPermission === 'granted'}
+        onToggleNotification={handleToggleNotification}
       />
 
       <main className="p-3.5 space-y-3.5 flex-1">
