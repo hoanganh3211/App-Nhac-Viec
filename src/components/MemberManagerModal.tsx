@@ -26,24 +26,18 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
   const [newRoomName, setNewRoomName] = useState(roomName);
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState('👨‍💻');
-  const [zaloName, setZaloName] = useState('');
 
   const realMembers = members.filter(
     (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
   );
-
-  const avgPoints = realMembers.length > 0
-    ? Math.max(0, Math.round(realMembers.reduce((sum, m) => sum + m.points, 0) / realMembers.length))
-    : 0;
 
   if (!isOpen) return null;
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    onAddMember(name.trim(), avatar, zaloName.trim() || name.trim());
+    onAddMember(name.trim(), avatar, name.trim());
     setName('');
-    setZaloName('');
   };
 
   const handleSaveRoomName = () => {
@@ -65,7 +59,7 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition"
+            className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -76,19 +70,19 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-slate-600 flex items-center space-x-1">
               <Home className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Tên phòng / Nhà chung:</span>
+              <span>Tên phòng:</span>
             </label>
             <div className="flex space-x-2">
               <input
                 type="text"
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
-                className="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
               />
               <button
                 type="button"
                 onClick={handleSaveRoomName}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-2xl transition"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-2xl transition cursor-pointer"
               >
                 Đổi tên
               </button>
@@ -97,8 +91,8 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
 
           {/* Members list */}
           <div className="space-y-2">
-            <div className="text-xs font-semibold text-slate-600 flex items-center justify-between">
-              <span>Danh sách người ở chung ({realMembers.length} người):</span>
+            <div className="text-xs font-semibold text-slate-600">
+              Danh sách thành viên ({realMembers.length}):
             </div>
 
             <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-2xl overflow-hidden bg-slate-50/50">
@@ -111,8 +105,8 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
                     <span className="text-2xl">{member.avatar}</span>
                     <div>
                       <div className="font-semibold text-sm text-slate-800">{member.name}</div>
-                      <div className="text-xs text-slate-400">
-                        Tag Zalo: @{member.zaloName || member.name} • {member.points} điểm
+                      <div className="text-[11px] text-slate-500">
+                        Điểm đóng góp: <strong className="text-indigo-600 font-bold">{member.points}đ</strong>
                       </div>
                     </div>
                   </div>
@@ -120,15 +114,12 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
                   {realMembers.length > 1 && (
                     <button
                       onClick={() => {
-                        const confirmed = window.confirm(
-                          `Bạn có muốn tạo đề xuất xóa "${member.name}" khỏi phòng không?\n\nThao tác này cần quá bán (> 50%) thành viên trong phòng biểu quyết đồng ý để thực hiện.`
-                        );
-                        if (confirmed) {
+                        if (window.confirm(`Xóa "${member.name}" khỏi phòng?`)) {
                           onDeleteMember(member.id);
                         }
                       }}
-                      className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
-                      title="Đề xuất biểu quyết xóa thành viên"
+                      className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+                      title="Xóa thành viên"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -136,40 +127,25 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
                 </div>
               ))}
             </div>
-
-            {realMembers.length > 1 && (
-              <p className="text-[10px] text-slate-400 italic">
-                *Thao tác xóa thành viên cần được hơn nửa thành viên trong phòng biểu quyết đồng ý.
-              </p>
-            )}
           </div>
 
           {/* Add member form */}
           <form onSubmit={handleAdd} className="space-y-3 pt-3 border-t border-slate-100">
             <div className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
               <UserPlus className="w-4 h-4 text-indigo-600" />
-              <span>Thêm bạn cùng phòng mới:</span>
+              <span>Thêm thành viên mới:</span>
             </div>
-
-            {avgPoints > 0 && (
-              <div className="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-[11px] text-emerald-950 flex items-start space-x-2">
-                <span className="text-sm">🛡️</span>
-                <span>
-                  <strong>Bảo vệ người mới:</strong> Thành viên mới nhận ngay <strong>{avgPoints} điểm khởi điểm</strong> (điểm TB phòng). Lịch việc nhà sẽ bắt đầu chia đều cho người mới từ <strong>ngày mai</strong> để không xáo trộn việc hôm nay!
-                </span>
-              </div>
-            )}
 
             {/* Avatar picker */}
             <div>
-              <label className="block text-[11px] text-slate-500 mb-1">Chọn biểu tượng:</label>
+              <label className="block text-[11px] text-slate-500 mb-1">Biểu tượng:</label>
               <div className="flex space-x-1.5 overflow-x-auto pb-1">
                 {AVATAR_OPTIONS.map((emoji) => (
                   <button
                     key={emoji}
                     type="button"
                     onClick={() => setAvatar(emoji)}
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 transition ${
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 transition cursor-pointer ${
                       avatar === emoji
                         ? 'bg-indigo-100 border-2 border-indigo-600 scale-105'
                         : 'bg-slate-100 hover:bg-slate-200'
@@ -181,34 +157,21 @@ export const MemberManagerModal: React.FC<MemberManagerModalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[11px] text-slate-500 mb-1">Họ & Tên:</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Hoàng Tuấn"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] text-slate-500 mb-1">Tên trên Zalo:</label>
-                <input
-                  type="text"
-                  placeholder="Tên để bot tag"
-                  value={zaloName}
-                  onChange={(e) => setZaloName(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
+            <div>
+              <label className="block text-[11px] text-slate-500 mb-1">Tên:</label>
+              <input
+                type="text"
+                required
+                placeholder="Ví dụ: Tuấn"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+              />
             </div>
 
             <button
               type="submit"
-              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-100 transition"
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-100 transition cursor-pointer"
             >
               + Thêm Vào Phòng
             </button>

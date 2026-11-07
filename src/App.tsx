@@ -1,82 +1,47 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import confetti from 'canvas-confetti';
-import { 
-  Sparkles, 
-  Calendar, 
-  CheckCircle2, 
-  Share2, 
-  UserCheck,
-  ShieldCheck,
-  Scale
-} from 'lucide-react';
-import { AppState, Chore, Member, TransferRequest, ChoreLog, RoomProposal, AppNotification } from './types';
-import { 
-  loadState, 
-  saveState, 
-  getTodayDateString, 
-  autoBalanceChores, 
-  handleDayRollover, 
+import { Sparkles, CheckCircle2, Scale } from 'lucide-react';
+import { AppState, Chore, Member, ChoreLog } from './types';
+import {
+  loadState,
+  saveState,
+  getTodayDateString,
+  autoBalanceChores,
+  handleDayRollover,
   isChoreScheduledToday,
   getCanonicalStateSignature,
   mergeStates,
-  getNextAssignee
 } from './utils/storage';
-import { playSuccessSound, playNudgeSound } from './utils/audio';
-import { 
-  getNotificationPermission, 
-  requestNotificationPermission, 
-  checkAndNotifyMyChores,
-  checkAndPushRemoteNotifications,
-  clearAllActiveNotifications
-} from './utils/notifications';
-import { 
-  getSupabaseClient, 
-  pushStateToCloud, 
+import { playSuccessSound } from './utils/audio';
+import {
+  getSupabaseClient,
+  pushStateToCloud,
   fetchStateFromCloud,
-  startNewDayChoresForRoom
 } from './utils/supabase';
 import { Navbar } from './components/Navbar';
-import { PersonalTaskBanner } from './components/PersonalTaskBanner';
 import { ChoreCard } from './components/ChoreCard';
-import { FairnessBoard } from './components/FairnessBoard';
 import { AddChoreModal } from './components/AddChoreModal';
 import { MemberManagerModal } from './components/MemberManagerModal';
-import { ZaloReminderModal } from './components/ZaloReminderModal';
-import { HistoryModal } from './components/HistoryModal';
-import { RulesModal } from './components/RulesModal';
-import { TutorialModal } from './components/TutorialModal';
-import { PWAInstallModal } from './components/PWAInstallModal';
 import { MenuDrawer } from './components/MenuDrawer';
-import { TransferChoreModal } from './components/TransferChoreModal';
 import { RoomModal } from './components/RoomModal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { AuthScreen } from './components/AuthScreen';
-import { AdminDashboard } from './components/AdminDashboard';
-import { 
-  getCurrentAuthUser, 
-  logoutAccount, 
-  updateUserRoom, 
-  getPendingRoomInvite, 
-  setPendingRoomInvite 
+import {
+  getCurrentAuthUser,
+  logoutAccount,
+  updateUserRoom,
+  getPendingRoomInvite,
+  setPendingRoomInvite,
 } from './utils/auth';
 import { UserAccount } from './types';
-import { ChoreRecommendationModal } from './components/ChoreRecommendationModal';
-import { ChoreDetailModal } from './components/ChoreDetailModal';
-import { RequestRedoModal } from './components/RequestRedoModal';
-import { ProposalVoteCard } from './components/ProposalVoteCard';
-import { NotificationModal } from './components/NotificationModal';
-import { NotificationSettingsModal } from './components/NotificationSettingsModal';
-import { ChoreManagerModal } from './components/ChoreManagerModal';
-import { ChoreScheduleModal } from './components/ChoreScheduleModal';
-import { shareToZalo } from './utils/zalo';
 
 const HAS_ROOM_KEY = 'app_nhac_viec_has_active_room';
 
 export function App() {
-  // 1. Authenticated User State
+  // Auth
   const [authUser, setAuthUser] = useState<UserAccount | null>(() => getCurrentAuthUser());
 
-  // 2. Pending room code from URL query (?room=XYZ) or saved invite
+  // Pending room code from URL (?room=XYZ)
   const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
@@ -90,33 +55,20 @@ export function App() {
 
   const [state, setState] = useState<AppState>(loadState);
 
-  // Xác định người dùng có phải là Quản trị viên (Admin) không
-  const isAdmin = Boolean(
-    authUser && (authUser.role === 'admin' || authUser.username.toLowerCase() === 'admin')
-  );
-
-  // Authenticated Member in the room (matched by ID or username)
-  // Quản trị viên chỉ là người giám sát, kiểm tra phòng chứ KHÔNG PHẢI là thành viên phòng!
+  // Current member in room
   const currentMember = useMemo(() => {
-    if (!authUser || isAdmin) return undefined;
+    if (!authUser) return undefined;
     return state.members.find(
       (m) => m.id === authUser.id || m.name.toLowerCase() === authUser.username.toLowerCase()
     );
-  }, [state.members, authUser, isAdmin]);
+  }, [state.members, authUser]);
 
-  const currentUserId = isAdmin ? null : (currentMember?.id || authUser?.id || null);
+  const currentUserId = currentMember?.id || authUser?.id || null;
 
-  // Anti-loop and anti-flicker refs
+  // Refs
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const currentUserIdRef = useRef(currentUserId);
-  currentUserIdRef.current = currentUserId;
-
-  const currentMemberRef = useRef(currentMember);
-  currentMemberRef.current = currentMember;
-
-  // Unique client instance ID (chống vòng lặp realtime echo)
   const [clientId] = useState<string>(() => {
     try {
       let cid = sessionStorage.getItem('app_nhac_viec_client_id');
@@ -132,90 +84,26 @@ export function App() {
   const clientIdRef = useRef<string>(clientId);
   clientIdRef.current = clientId;
 
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'connected' | 'error' | 'offline'>('idle');
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const isCloudInitializedRef = useRef<boolean>(false);
   const isRemoteUpdateRef = useRef(false);
   const lastCanonicalSigRef = useRef<string>('');
 
-  const [activeTab, setActiveTab] = useState<'my_chores' | 'today_all' | 'all' | 'pending' | 'completed'>(() => {
-    return isAdmin ? 'today_all' : 'my_chores';
-  });
+  const [activeTab, setActiveTab] = useState<'today' | 'done'>('today');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
-    getNotificationPermission()
-  );
 
-  // Modals
+  // Modals (only 4)
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAddChoreOpen, setIsAddChoreOpen] = useState(false);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
-  const [isZaloOpen, setIsZaloOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isRulesOpen, setIsRulesOpen] = useState(false);
-  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
-  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
-  const [isPWAOpen, setIsPWAOpen] = useState(false);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
-  const [transferTargetChore, setTransferTargetChore] = useState<Chore | null>(null);
-  const [isChoreRecOpen, setIsChoreRecOpen] = useState(false);
-  const [selectedChoreForDetail, setSelectedChoreForDetail] = useState<Chore | null>(null);
-  const [selectedChoreForRedo, setSelectedChoreForRedo] = useState<Chore | null>(null);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
-  const [isChoreManagerOpen, setIsChoreManagerOpen] = useState(false);
-  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
-
-  const unreadNotificationsCount = useMemo(() => {
-    const unreadNotifs = (state.notifications || []).filter((n) => {
-      const readList = Array.isArray(n.readBy) ? n.readBy : [];
-      return !currentUserId || !readList.includes(currentUserId);
-    }).length;
-    const pendingVotes = (state.proposals || []).filter((p) => {
-      const votes = p.votes || {};
-      return p.status === 'pending' && (!currentUserId || !votes[currentUserId]);
-    }).length;
-    return unreadNotifs + pendingVotes;
-  }, [state.notifications, state.proposals, currentUserId]);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
+    setTimeout(() => setToastMessage(null), 3500);
   }, []);
 
-  // 1. LUÔN LUÔN quét và loại bỏ sạch tài khoản Admin khỏi danh sách thành viên phòng (Áp dụng cho TẤT CẢ mọi người)
+  // Auto-add authenticated user to room if not already present
   useEffect(() => {
-    const hasAdmin = (state.members || []).some(
-      (m) => m.id === 'usr_admin_root' || m.name.toLowerCase() === 'admin'
-    );
-    if (hasAdmin) {
-      const cleanedMembers = (state.members || []).filter(
-        (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
-      );
-      const cleanedChores = (state.chores || []).map((c) => {
-        if ((c.assignedTo === 'usr_admin_root' || c.assignedTo === 'admin') && cleanedMembers.length > 0) {
-          return { ...c, assignedTo: cleanedMembers[0].id };
-        }
-        return c;
-      });
-      const newState: AppState = {
-        ...state,
-        members: cleanedMembers,
-        chores: cleanedChores,
-      };
-      setState(newState);
-      saveState(newState);
-      pushStateToCloud(newState).catch(console.error);
-    }
-  }, [state.members, state.chores]);
-
-  // 2. Nếu là người dùng thường: thêm vào phòng nếu chưa có (TUYỆT ĐỐI KHÔNG thêm Admin)
-  useEffect(() => {
-    if (isAdmin) return; // Admin tuyệt đối không bao giờ được thêm vào members
-    if (authUser && (authUser.role === 'admin' || authUser.username.toLowerCase() === 'admin')) return;
-
     if (hasActiveRoom && authUser && state.members.length > 0 && !currentMember) {
       const alreadyIn = state.members.some(
         (m) => m.id === authUser.id || m.name.toLowerCase() === authUser.username.toLowerCase()
@@ -241,26 +129,22 @@ export function App() {
         members: [...prev.members, newMember],
       }));
     }
-  }, [hasActiveRoom, authUser, currentMember, state.members, isAdmin]);
+  }, [hasActiveRoom, authUser, currentMember, state.members]);
 
-  // Đồng bộ hai chiều với Cloud Supabase (kéo dữ liệu mới nhất & hợp nhất thông minh)
+  // Cloud sync
   const syncWithCloud = useCallback(async (targetRoomCode?: string, forceToast = false) => {
     const code = (targetRoomCode || stateRef.current.roomCode || '').trim().toUpperCase();
-    if (!code) return;
-    if (code === 'PHONG-302' && !hasActiveRoom) return;
+    if (!code || code === 'PHONG-302') return;
 
     const supabase = getSupabaseClient();
     if (!supabase) {
-      setSyncStatus('offline');
       isCloudInitializedRef.current = true;
       return;
     }
 
-    setSyncStatus('syncing');
     try {
       const cloudState = await fetchStateFromCloud(code);
       if (cloudState) {
-        // Hợp nhất dữ liệu giữa local và cloud
         const merged = mergeStates(stateRef.current, cloudState);
         const mergedSig = getCanonicalStateSignature(merged);
         const cloudSig = getCanonicalStateSignature(cloudState);
@@ -270,105 +154,33 @@ export function App() {
         setState(merged);
         saveState(merged);
 
-        // Nếu bản local có dữ liệu tiến bộ hơn (ví dụ thao tác offline), đẩy lên cloud ngay
         if (mergedSig !== cloudSig) {
-          const pushPayload: AppState = {
+          await pushStateToCloud({
             ...merged,
             lastUpdatedBy: clientIdRef.current,
             updatedAt: new Date().toISOString(),
             version: (merged.version || 0) + 1,
-          };
-          await pushStateToCloud(pushPayload);
+          });
         }
       } else {
-        // Phòng mới tạo chưa có trên cloud, đẩy bản hiện tại lên
-        const pushPayload: AppState = {
+        await pushStateToCloud({
           ...stateRef.current,
           lastUpdatedBy: clientIdRef.current,
           updatedAt: new Date().toISOString(),
           version: (stateRef.current.version || 0) + 1,
-        };
-        await pushStateToCloud(pushPayload);
+        });
       }
 
-      setSyncStatus('connected');
-      setLastSyncTime(new Date());
       isCloudInitializedRef.current = true;
-      if (forceToast) {
-        showToast('✅ Đã đồng bộ dữ liệu đám mây mới nhất!');
-      }
+      if (forceToast) showToast('✅ Đã đồng bộ dữ liệu!');
     } catch (err) {
-      console.error('Failed to sync with cloud:', err);
-      setSyncStatus('error');
+      console.error('Sync failed:', err);
       isCloudInitializedRef.current = true;
-      if (forceToast) {
-        showToast('⚠️ Không thể kết nối Cloud. Dữ liệu đang được lưu Offline.');
-      }
+      if (forceToast) showToast('⚠️ Không thể kết nối Cloud.');
     }
-  }, [hasActiveRoom, showToast]);
+  }, [showToast]);
 
-  // Đảm bảo toàn bộ công việc ngày 7/11 của phòng P-VZOX là công việc mới chưa làm (tính bắt đầu từ mai sau ngày 6/11)
-  useEffect(() => {
-    const key = 'pvzox_cloud_fresh_start_7_11_v2';
-    if (!localStorage.getItem(key)) {
-      localStorage.setItem(key, 'true');
-      startNewDayChoresForRoom('P-VZOX')
-        .then(() => {
-          if (state.roomCode?.toUpperCase() === 'P-VZOX') {
-            syncWithCloud('P-VZOX');
-          }
-        })
-        .catch(console.error);
-    }
-  }, [state.roomCode, syncWithCloud]);
-
-  // Đảm bảo tại phòng P-VZOX hôm nay (7/11) các công việc ở trạng thái chưa hoàn thành để mọi người làm
-  useEffect(() => {
-    if (!hasActiveRoom || state.roomCode?.toUpperCase() !== 'P-VZOX') return;
-    const key = 'pvzox_local_fresh_start_2026-11-07_v2';
-    if (localStorage.getItem(key)) return;
-
-    const hasAnyCompleted = (state.chores || []).some((c) => c.isCompletedToday);
-    if (hasAnyCompleted) {
-      localStorage.setItem(key, 'true');
-      const realMembers = (state.members || []).filter(
-        (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
-      );
-      const resetChores = (state.chores || []).map((chore) => {
-        const nextAssignee = chore.isCompletedToday
-          ? getNextAssignee(chore.assignedTo, chore.rotationRule, realMembers)
-          : chore.assignedTo;
-        return {
-          ...chore,
-          assignedTo: nextAssignee || (realMembers[0]?.id ?? chore.assignedTo),
-          isCompletedToday: false,
-          completedAt: undefined,
-          completedBy: undefined,
-          isLatePenalized: false,
-          redoRequest: undefined,
-        };
-      });
-
-      const newState: AppState = {
-        ...state,
-        members: realMembers,
-        chores: resetChores,
-        lastDateChecked: getTodayDateString(),
-        updatedAt: new Date().toISOString(),
-        version: (state.version || 0) + 1,
-        lastUpdatedBy: 'system_fresh_start_7_11',
-      };
-
-      lastCanonicalSigRef.current = getCanonicalStateSignature(newState);
-      isRemoteUpdateRef.current = true;
-      setState(newState);
-      saveState(newState);
-      pushStateToCloud(newState).catch(console.error);
-      showToast('☀️ Chào ngày mới 7/11! Việc nhà đã xoay lượt sang các bạn mới và sẵn sàng thực hiện.');
-    }
-  }, [hasActiveRoom, state.roomCode, state.chores, state.members, showToast]);
-
-  // Khi ứng dụng khởi động và có phòng hoạt động: Bắt buộc kéo từ Cloud trước khi cho phép auto-push
+  // Initial cloud sync
   useEffect(() => {
     if (hasActiveRoom && authUser && state.roomCode && state.roomCode !== 'PHONG-302') {
       syncWithCloud(state.roomCode);
@@ -377,48 +189,34 @@ export function App() {
     }
   }, [hasActiveRoom, authUser, syncWithCloud]);
 
-  // Tự động đẩy thay đổi lên Cloud (debounce 250ms & chỉ đẩy khi khác chữ ký dữ liệu)
+  // Auto-push changes to cloud
   useEffect(() => {
     if (!hasActiveRoom || !authUser) return;
     saveState(state);
 
-    // Không push khi chưa hoàn thành initial sync từ cloud để tránh ghi đè dữ liệu cũ
     if (!isCloudInitializedRef.current) return;
-
     if (isRemoteUpdateRef.current) {
       isRemoteUpdateRef.current = false;
       return;
     }
 
     const currentSig = getCanonicalStateSignature(state);
-    if (currentSig === lastCanonicalSigRef.current) {
-      return;
-    }
-
+    if (currentSig === lastCanonicalSigRef.current) return;
     lastCanonicalSigRef.current = currentSig;
 
     const timer = setTimeout(async () => {
-      setSyncStatus('syncing');
-      const pushPayload: AppState = {
+      await pushStateToCloud({
         ...stateRef.current,
         lastUpdatedBy: clientIdRef.current,
         updatedAt: new Date().toISOString(),
         version: (stateRef.current.version || 0) + 1,
-      };
-
-      const success = await pushStateToCloud(pushPayload);
-      if (success) {
-        setSyncStatus('connected');
-        setLastSyncTime(new Date());
-      } else {
-        setSyncStatus('error');
-      }
+      });
     }, 250);
 
     return () => clearTimeout(timer);
   }, [state, hasActiveRoom, authUser]);
 
-  // Realtime subscription via Supabase (Lắng nghe mọi thay đổi từ phòng và hợp nhất ngay)
+  // Realtime subscription
   useEffect(() => {
     if (!hasActiveRoom || !authUser || !state.roomCode || state.roomCode === 'PHONG-302') return;
     const supabase = getSupabaseClient();
@@ -435,58 +233,31 @@ export function App() {
           filter: `room_code=eq.${state.roomCode}`,
         },
         (payload) => {
-          if (!currentUserIdRef.current) return;
           if (payload.new && (payload.new as any).state_data) {
             const incomingState = (payload.new as any).state_data as AppState;
-
-            // Bỏ qua echo nếu sự kiện do chính client này đẩy lên
-            if (incomingState.lastUpdatedBy === clientIdRef.current) {
-              return;
-            }
+            if (incomingState.lastUpdatedBy === clientIdRef.current) return;
 
             const incomingSig = getCanonicalStateSignature(incomingState);
             const currentSig = getCanonicalStateSignature(stateRef.current);
-            if (incomingSig === currentSig || incomingSig === lastCanonicalSigRef.current) {
-              return;
-            }
+            if (incomingSig === currentSig || incomingSig === lastCanonicalSigRef.current) return;
 
-            // Hợp nhất thông minh với trạng thái hiện tại
             const merged = mergeStates(stateRef.current, incomingState);
-            const mergedSig = getCanonicalStateSignature(merged);
-
-            lastCanonicalSigRef.current = mergedSig;
+            lastCanonicalSigRef.current = getCanonicalStateSignature(merged);
             isRemoteUpdateRef.current = true;
-
-            // Đẩy thông báo tức thì ra màn hình khóa khi bạn cùng phòng hoàn thành việc/nhượng việc/biểu quyết
-            if (currentUserIdRef.current) {
-              checkAndPushRemoteNotifications(
-                stateRef.current.notifications || [],
-                merged.notifications || [],
-                currentUserIdRef.current
-              );
-            }
 
             setState(merged);
             saveState(merged);
-            setSyncStatus('connected');
-            setLastSyncTime(new Date());
           }
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setSyncStatus('connected');
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          setSyncStatus('offline');
-        }
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, [state.roomCode, hasActiveRoom, authUser]);
 
-  // Tự động kéo dữ liệu khi mở lại màn hình điện thoại, kết nối lại mạng hoặc heartbeat
+  // Resume/online sync
   useEffect(() => {
     if (!hasActiveRoom || !authUser || !state.roomCode || state.roomCode === 'PHONG-302') return;
 
@@ -496,21 +267,11 @@ export function App() {
       }
     };
 
-    const handleOnline = () => {
-      setSyncStatus('syncing');
-      syncWithCloud(stateRef.current.roomCode);
-    };
-
-    const handleOffline = () => {
-      setSyncStatus('offline');
-    };
-
     window.addEventListener('focus', handleResume);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleResume);
     document.addEventListener('visibilitychange', handleResume);
 
-    const heartbeatInterval = setInterval(() => {
+    const heartbeat = setInterval(() => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
         syncWithCloud(stateRef.current.roomCode);
       }
@@ -518,163 +279,43 @@ export function App() {
 
     return () => {
       window.removeEventListener('focus', handleResume);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleResume);
       document.removeEventListener('visibilitychange', handleResume);
-      clearInterval(heartbeatInterval);
+      clearInterval(heartbeat);
     };
   }, [hasActiveRoom, authUser, state.roomCode, syncWithCloud]);
 
-  // Targeted chores for current user (hôm nay có lịch)
-  const myChores = useMemo(() => {
-    if (!currentUserId) return [];
-    return state.chores.filter((c) => c.assignedTo === currentUserId && isChoreScheduledToday(c));
-  }, [state.chores, currentUserId]);
-
-  // Incoming transfer requests for current user
-  const incomingTransferRequests = useMemo(() => {
-    if (!currentUserId) return [];
-    return (state.transferRequests || []).filter(
-      (req) => req.toMemberId === currentUserId && req.status === 'pending'
-    );
-  }, [state.transferRequests, currentUserId]);
-
-  // Periodic check (Midnight rollover, notifications cá nhân, và phạt trừ điểm trễ)
-  const runPeriodicTasks = useCallback(() => {
-    if (!hasActiveRoom || !authUser || !currentUserIdRef.current) return;
-    const currentState = stateRef.current;
-    const todayStr = getTodayDateString();
-
-    // 1. Tự động kiểm tra sang ngày mới (Midnight Rollover & Phân chia việc cho người mới)
-    if (currentState.lastDateChecked !== todayStr) {
-      const rolledOver = handleDayRollover(currentState);
-      setState(rolledOver);
-      return;
-    }
-
-    // 2. Thông báo đẩy: Nhắc việc hôm nay, báo việc ngày mai & cảnh báo nhiều mốc sát hạn chót
-    checkAndNotifyMyChores(
-      currentState.chores,
-      currentUserIdRef.current,
-      currentMemberRef.current,
-      currentState.members,
-      currentState.rebalancePendingTomorrow
-    );
-
-    // 3. Kiểm tra quá hạn và trừ điểm
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-    let hasPenaltyApplied = false;
-    let updatedMembers = [...currentState.members];
-    let updatedLogs = [...currentState.logs];
-
-    const updatedChores = currentState.chores.map((chore) => {
-      if (chore.isCompletedToday || chore.isLatePenalized) return chore;
-      if (!isChoreScheduledToday(chore)) return chore; // Không phạt nếu hôm nay không phải ngày làm việc này
-
-      const [dueH, dueM] = chore.dueTime.split(':').map(Number);
-      const dueMinutes = dueH * 60 + dueM;
-
-      if (currentMinutes > dueMinutes) {
-        const assignee = updatedMembers.find((m) => m.id === chore.assignedTo);
-        if (!assignee) return chore;
-
-        const penaltyPoints =
-          assignee.lateViolations > 0 ? chore.points + 2 : chore.points;
-
-        updatedMembers = updatedMembers.map((m) =>
-          m.id === assignee.id
-            ? {
-                ...m,
-                points: m.points - penaltyPoints,
-                lateViolations: m.lateViolations + 1,
-                streak: 0,
-              }
-            : m
-        );
-
-        const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-        updatedLogs = [
-          {
-            id: 'log_late_' + Date.now() + '_' + chore.id,
-            choreId: chore.id,
-            choreTitle: chore.title,
-            memberId: assignee.id,
-            memberName: assignee.name,
-            completedAt: `Hôm nay ${timeStr}`,
-            pointsEarned: -penaltyPoints,
-            type: 'late_penalty',
-            dateStr: todayStr,
-            note:
-              assignee.lateViolations > 0
-                ? `Tái phạm trễ hạn (-(điểm việc + 2))`
-                : `Trễ hạn việc nhà`,
-          },
-          ...updatedLogs,
-        ];
-
-        hasPenaltyApplied = true;
-        showToast(`⚠️ ${assignee.name} bị trừ ${penaltyPoints}đ do trễ "${chore.title}"!`);
-
-        return {
-          ...chore,
-          isLatePenalized: true,
-        };
-      }
-      return chore;
-    });
-
-    if (hasPenaltyApplied) {
-      setState((prev) => ({
-        ...prev,
-        members: updatedMembers,
-        chores: updatedChores,
-        logs: updatedLogs,
-      }));
-    }
-  }, [hasActiveRoom]);
-
-  // Định kỳ chạy mỗi 60 giây (không tạo vòng lặp render)
+  // Day rollover check
   useEffect(() => {
     if (!hasActiveRoom || !authUser) return;
-    runPeriodicTasks();
-    const interval = setInterval(runPeriodicTasks, 60000);
+
+    const check = () => {
+      const todayStr = getTodayDateString();
+      if (stateRef.current.lastDateChecked !== todayStr) {
+        const rolledOver = handleDayRollover(stateRef.current);
+        setState(rolledOver);
+      }
+    };
+
+    check();
+    const interval = setInterval(check, 60000);
     return () => clearInterval(interval);
-  }, [hasActiveRoom, authUser, runPeriodicTasks]);
+  }, [hasActiveRoom, authUser]);
 
-  const handleRequestNotification = async () => {
-    const granted = await requestNotificationPermission();
-    setNotificationPermission(granted ? 'granted' : 'denied');
-    if (granted) {
-      showToast('🔔 Đã bật thông báo đẩy thành công!');
-      checkAndNotifyMyChores(
-        state.chores,
-        currentUserId,
-        currentMember,
-        state.members,
-        state.rebalancePendingTomorrow
-      );
-    } else {
-      showToast('⚠️ Bạn chưa cấp quyền thông báo trên trình duyệt.');
-    }
-  };
-
-  // Toggle chore completed (hoặc hủy tích để có thể hoàn thành lại)
+  // Toggle chore complete
   const handleToggleComplete = (choreId: string) => {
     const targetChore = state.chores.find((c) => c.id === choreId);
     if (!targetChore) return;
 
-    // Bảo mật vai trò: Chỉ chính chủ được giao việc mới có quyền tick hoàn thành hoặc hủy tick
     if (targetChore.assignedTo !== currentUserId) {
-      showToast('⚠️ Bạn không thể tick việc của người khác! Chỉ người phụ trách mới được tick.');
+      showToast('⚠️ Chỉ người phụ trách mới được tick!');
       return;
     }
 
     const willBeCompleted = !targetChore.isCompletedToday;
     const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const assignee = state.members.find((m) => m.id === targetChore.assignedTo);
-    const earnedPoints = targetChore.nextBonusPoints || targetChore.points;
+    const earnedPoints = targetChore.points;
 
     if (willBeCompleted) {
       playSuccessSound();
@@ -684,13 +325,9 @@ export function App() {
         origin: { y: 0.7 },
         colors: ['#6366f1', '#10b981', '#f59e0b', '#ec4899'],
       });
-
-      const bonusMsg = targetChore.nextBonusPoints
-        ? ` (Đã cộng thêm +1đ thưởng hoàn trả!)`
-        : '';
-      showToast(`🎉 +${earnedPoints} điểm cho ${assignee?.name || 'bạn'}!${bonusMsg}`);
+      showToast(`🎉 +${earnedPoints} điểm cho ${assignee?.name || 'bạn'}!`);
     } else {
-      showToast(`↩️ Đã hủy hoàn thành "${targetChore.title}". Số điểm (-${earnedPoints}đ) đã được trừ lại để bạn làm lại.`);
+      showToast(`↩️ Đã hủy hoàn thành "${targetChore.title}".`);
     }
 
     const updatedMembers = state.members.map((member) => {
@@ -701,9 +338,6 @@ export function App() {
             ? member.points + earnedPoints
             : Math.max(0, member.points - earnedPoints),
           streak: willBeCompleted ? member.streak + 1 : Math.max(0, member.streak - 1),
-          lateViolations: willBeCompleted
-            ? Math.max(0, member.lateViolations - 1)
-            : member.lateViolations,
         };
       }
       return member;
@@ -716,315 +350,44 @@ export function App() {
           isCompletedToday: willBeCompleted,
           completedAt: willBeCompleted ? nowTimeStr : undefined,
           completedBy: willBeCompleted ? chore.assignedTo : undefined,
-          nextBonusPoints: willBeCompleted ? undefined : chore.nextBonusPoints,
-          // Khi hoàn thành lại, xóa yêu cầu làm lại trước đó
-          redoRequest: willBeCompleted ? undefined : chore.redoRequest,
         };
       }
       return chore;
     });
 
-    let updatedLogs = [...state.logs];
-    let updatedNotifications = [...(state.notifications || [])];
-
-    if (willBeCompleted) {
-      updatedLogs = [
-        {
-          id: 'log_' + Date.now(),
-          choreId: targetChore.id,
-          choreTitle: targetChore.title,
-          memberId: targetChore.assignedTo,
-          memberName: assignee?.name || 'Thành viên',
-          completedAt: `Hôm nay ${nowTimeStr}`,
-          pointsEarned: earnedPoints,
-          type: targetChore.nextBonusPoints ? 'recovery_bonus' : 'completed',
-          dateStr: getTodayDateString(),
-          note: targetChore.nextBonusPoints ? 'Thưởng hoàn trả (+1đ)' : undefined,
-        },
-        ...state.logs,
-      ];
-
-      const compNotif: AppNotification = {
-        id: 'notif_comp_' + Date.now(),
-        title: 'Hoàn thành việc nhà',
-        message: `${assignee?.name || 'Thành viên'} vừa hoàn thành "${targetChore.title}" (+${earnedPoints}đ)!`,
-        type: 'chore_completed',
-        createdAt: `Hôm nay ${nowTimeStr}`,
-        readBy: currentUserId ? [currentUserId] : [],
-        choreId: targetChore.id,
-      };
-      updatedNotifications = [compNotif, ...updatedNotifications];
-    } else {
-      updatedLogs = [
-        {
-          id: 'log_untick_' + Date.now(),
-          choreId: targetChore.id,
-          choreTitle: targetChore.title,
-          memberId: targetChore.assignedTo,
-          memberName: assignee?.name || 'Thành viên',
-          completedAt: `Hôm nay ${nowTimeStr}`,
-          pointsEarned: -earnedPoints,
-          type: 'redo_requested',
-          dateStr: getTodayDateString(),
-          note: 'Hủy đánh dấu hoàn thành để làm lại',
-        },
-        ...state.logs,
-      ];
-    }
-
-    setState((prev) => ({
-      ...prev,
-      members: updatedMembers,
-      chores: updatedChores,
-      logs: updatedLogs,
-      notifications: updatedNotifications,
-    }));
-
-    // Cập nhật state modal chi tiết nếu đang mở việc này
-    if (selectedChoreForDetail?.id === choreId) {
-      setSelectedChoreForDetail((prev) =>
-        prev
-          ? {
-              ...prev,
-              isCompletedToday: willBeCompleted,
-              completedAt: willBeCompleted ? nowTimeStr : undefined,
-              completedBy: willBeCompleted ? prev.assignedTo : undefined,
-              redoRequest: willBeCompleted ? undefined : prev.redoRequest,
-            }
-          : null
-      );
-    }
-  };
-
-  // Người dùng khác yêu cầu làm lại công việc (do chưa sạch / làm chưa tốt)
-  const handleConfirmRedo = async (choreId: string, reason: string) => {
-    if (!currentMember) return;
-    const targetChore = state.chores.find((c) => c.id === choreId);
-    if (!targetChore) return;
-
-    const assignee = state.members.find((m) => m.id === targetChore.assignedTo);
-    if (!assignee) return;
-
-    const earnedPoints = targetChore.nextBonusPoints || targetChore.points;
-    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-
-    // Tạm thu hồi điểm đã cộng cho người làm
-    const updatedMembers = state.members.map((m) => {
-      if (m.id === assignee.id) {
-        return {
-          ...m,
-          points: Math.max(0, m.points - earnedPoints),
-          streak: Math.max(0, m.streak - 1),
-        };
-      }
-      return m;
-    });
-
-    const updatedChores = state.chores.map((c) => {
-      if (c.id === choreId) {
-        return {
-          ...c,
-          isCompletedToday: false,
-          completedAt: undefined,
-          completedBy: undefined,
-          redoRequest: {
-            requestedBy: currentMember.id,
-            requestedByName: currentMember.name,
-            reason,
-            requestedAt: nowTimeStr,
-          },
-        };
-      }
-      return c;
-    });
-
-    const redoLog: ChoreLog = {
-      id: 'log_redo_' + Date.now(),
+    const newLog: ChoreLog = {
+      id: 'log_' + Date.now(),
       choreId: targetChore.id,
       choreTitle: targetChore.title,
-      memberId: assignee.id,
-      memberName: assignee.name,
+      memberId: targetChore.assignedTo,
+      memberName: assignee?.name || 'Thành viên',
       completedAt: `Hôm nay ${nowTimeStr}`,
-      pointsEarned: -earnedPoints,
-      type: 'redo_requested',
+      pointsEarned: willBeCompleted ? earnedPoints : -earnedPoints,
+      type: willBeCompleted ? 'completed' : 'redo_requested',
       dateStr: getTodayDateString(),
-      note: `${currentMember.name} yêu cầu làm lại: "${reason}"`,
-    };
-
-    const redoNotif: AppNotification = {
-      id: 'notif_redo_' + Date.now(),
-      title: '⚠️ Yêu cầu làm lại việc',
-      message: `${currentMember.name} yêu cầu ${assignee.name} làm lại "${targetChore.title}" (Lý do: ${reason}).`,
-      type: 'chore_redo',
-      createdAt: `Hôm nay ${nowTimeStr}`,
-      readBy: [currentMember.id],
-      choreId: targetChore.id,
     };
 
     setState((prev) => ({
       ...prev,
       members: updatedMembers,
       chores: updatedChores,
-      logs: [redoLog, ...prev.logs],
-      notifications: [redoNotif, ...(prev.notifications || [])],
+      logs: [newLog, ...prev.logs],
     }));
-
-    setSelectedChoreForRedo(null);
-    if (selectedChoreForDetail?.id === choreId) {
-      setSelectedChoreForDetail(null);
-    }
-
-    showToast(`⚠️ Đã gửi yêu cầu làm lại "${targetChore.title}" tới ${assignee.name}!`);
-
-    // Chuẩn bị tin nhắn nhắc Zalo
-    const tag = `@${assignee.zaloName || assignee.name}`;
-    const text = `📢 [YÊU CẦU LÀM LẠI] Alo ${tag} ơi!\nBạn ${currentMember.name} vừa kiểm tra việc "${targetChore.title}" và thấy chưa đạt (${reason}).\nBạn làm lại sạch sẽ và tick lại để nhận lại điểm nhé! 🧹\n🔗 Link vào app: ${window.location.origin}?room=${encodeURIComponent(state.roomCode)}\n🔑 Mã phòng: ${state.roomCode}`;
-    await shareToZalo(text);
   };
 
-  // Cơ chế nhượng việc
-  const handleInitiateTransfer = (chore: Chore, targetMemberId: string) => {
-    if (!currentMember) return;
-    const targetMember = state.members.find((m) => m.id === targetMemberId);
-    if (!targetMember) return;
-
-    const newRequest: TransferRequest = {
-      id: 'req_' + Date.now(),
-      choreId: chore.id,
-      choreTitle: chore.title,
-      choreIcon: chore.icon,
-      chorePoints: chore.points,
-      fromMemberId: currentMember.id,
-      fromMemberName: currentMember.name,
-      toMemberId: targetMember.id,
-      toMemberName: targetMember.name,
-      status: 'pending',
-      createdAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    const transferNotif: AppNotification = {
-      id: 'notif_trans_' + Date.now(),
-      title: '🔄 Lời mời nhượng việc',
-      message: `${currentMember.name} muốn nhượng việc "${chore.title}" (+${chore.points}đ) cho ${targetMember.name}.`,
-      type: 'chore_transfer',
-      createdAt: `Hôm nay ${newRequest.createdAt}`,
-      readBy: [currentMember.id],
-      choreId: chore.id,
-    };
-
-    setState((prev) => ({
-      ...prev,
-      transferRequests: [newRequest, ...(prev.transferRequests || [])],
-      notifications: [transferNotif, ...(prev.notifications || [])],
-    }));
-
-    showToast(`Đã gửi lời mời nhượng việc "${chore.title}" cho ${targetMember.name}!`);
-  };
-
-  // Người nhận đồng ý
-  const handleAcceptTransfer = (requestId: string) => {
-    const req = (state.transferRequests || []).find((r) => r.id === requestId);
-    if (!req) return;
-
-    const chore = state.chores.find((c) => c.id === req.choreId);
-    if (!chore) return;
-
-    const fromMember = state.members.find((m) => m.id === req.fromMemberId);
-    const toMember = state.members.find((m) => m.id === req.toMemberId);
-
-    const updatedMembers = state.members.map((m) => {
-      if (m.id === req.fromMemberId) {
-        return {
-          ...m,
-          points: m.points - req.chorePoints,
-        };
-      }
-      return m;
-    });
-
-    const updatedChores = state.chores.map((c) => {
-      if (c.id === req.choreId) {
-        return {
-          ...c,
-          assignedTo: req.toMemberId,
-          originalAssignee: req.fromMemberId,
-          nextBonusPoints: c.points + 1,
-        };
-      }
-      return c;
-    });
-
-    const updatedLogs: typeof state.logs = [
-      {
-        id: 'log_trans_' + Date.now(),
-        choreId: req.choreId,
-        choreTitle: req.choreTitle,
-        memberId: req.fromMemberId,
-        memberName: fromMember?.name || 'Người nhượng',
-        completedAt: `Hôm nay ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-        pointsEarned: -req.chorePoints,
-        type: 'transfer_fee',
-        dateStr: getTodayDateString(),
-        note: `Nhượng việc cho ${toMember?.name || 'bạn cùng phòng'}`,
-      },
-      ...state.logs,
-    ];
-
-    const updatedRequests = (state.transferRequests || []).map((r) =>
-      r.id === requestId ? { ...r, status: 'accepted' as const } : r
-    );
-
-    setState((prev) => ({
-      ...prev,
-      members: updatedMembers,
-      chores: updatedChores,
-      logs: updatedLogs,
-      transferRequests: updatedRequests,
-    }));
-
-    showToast(`Bạn đã nhận việc "${req.choreTitle}". Hoàn thành sẽ được +${req.chorePoints}đ!`);
-  };
-
-  // Người nhận từ chối
-  const handleDeclineTransfer = (requestId: string) => {
-    const req = (state.transferRequests || []).find((r) => r.id === requestId);
-    const updatedRequests = (state.transferRequests || []).map((r) =>
-      r.id === requestId ? { ...r, status: 'declined' as const } : r
-    );
-
-    setState((prev) => ({
-      ...prev,
-      transferRequests: updatedRequests,
-    }));
-
-    showToast(`Đã từ chối nhận việc "${req?.choreTitle}".`);
-  };
-
-  // Tham gia phòng bằng mã phòng (tự động gắn tài khoản đang đăng nhập vào phòng)
+  // Join room
   const handleJoinRoom = async (roomCode: string, userOverride?: UserAccount): Promise<boolean> => {
     const cleanCode = roomCode.trim().toUpperCase();
     if (!cleanCode) return false;
 
     const cloudState = await fetchStateFromCloud(cleanCode);
     const targetState = cloudState || (state.roomCode === cleanCode ? state : null);
-
-    if (!targetState) {
-      return false;
-    }
+    if (!targetState) return false;
 
     const activeUser = userOverride || authUser;
     let updatedMembers = [...targetState.members];
-    const isUserAdmin = Boolean(
-      activeUser && (activeUser.role === 'admin' || activeUser.username.toLowerCase() === 'admin')
-    );
 
-    // QUAN TRỌNG: Quản trị viên (Admin) chỉ là người kiểm tra/giám sát phòng, KHÔNG PHẢI là thành viên phòng!
-    // Tuyệt đối không thêm Admin vào phòng và luôn lọc sạch nếu vô tình có trước đó:
-    updatedMembers = updatedMembers.filter(
-      (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
-    );
-
-    if (activeUser && !isUserAdmin) {
+    if (activeUser) {
       const existingMember = updatedMembers.find(
         (m) => m.id === activeUser.id || m.name.toLowerCase() === activeUser.username.toLowerCase()
       );
@@ -1034,7 +397,7 @@ export function App() {
           ? Math.max(0, Math.round(updatedMembers.reduce((sum, m) => sum + m.points, 0) / updatedMembers.length))
           : 0;
 
-        const newMember: Member = {
+        updatedMembers.push({
           id: activeUser.id,
           name: activeUser.username,
           avatar: activeUser.avatar || '🙋‍♂️',
@@ -1043,50 +406,16 @@ export function App() {
           streak: 0,
           lateViolations: 0,
           zaloName: activeUser.username,
-        };
-        updatedMembers.push(newMember);
-
-        const joinLog: ChoreLog = {
-          id: 'log_join_' + Date.now(),
-          choreId: 'join',
-          choreTitle: 'Gia nhập phòng',
-          memberId: newMember.id,
-          memberName: newMember.name,
-          completedAt: `Hôm nay ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-          pointsEarned: avgPoints,
-          type: 'completed',
-          dateStr: getTodayDateString(),
-          note: avgPoints > 0
-            ? `Cấp ${avgPoints}đ khởi đầu (TB phòng). Việc nhà sẽ chia đều cho ${newMember.name} từ ngày mai`
-            : `Gia nhập phòng. Việc nhà sẽ chia đều cho ${newMember.name} từ ngày mai`,
-        };
-        targetState.logs = [joinLog, ...(targetState.logs || [])];
+        });
         targetState.rebalancePendingTomorrow = true;
       }
 
       updateUserRoom(activeUser.id, cleanCode);
     }
 
-    // Nếu trước đó có việc nào bị gán nhầm cho Admin, tự động chuyển cho thành viên thật
-    let updatedChores = [...(targetState.chores || [])];
-    const hasAdminChore = updatedChores.some(
-      (c) => c.assignedTo === 'usr_admin_root' || c.assignedTo === 'admin'
-    );
-    if (hasAdminChore && updatedMembers.length > 0) {
-      updatedChores = autoBalanceChores(
-        updatedChores.map((c) =>
-          c.assignedTo === 'usr_admin_root' || c.assignedTo === 'admin'
-            ? { ...c, assignedTo: updatedMembers[0].id }
-            : c
-        ),
-        updatedMembers
-      );
-    }
-
     const finalState: AppState = {
       ...targetState,
       members: updatedMembers,
-      chores: updatedChores,
       lastUpdatedBy: clientIdRef.current,
       updatedAt: new Date().toISOString(),
       version: (targetState.version || 0) + 1,
@@ -1100,65 +429,49 @@ export function App() {
     setHasActiveRoom(true);
     localStorage.setItem(HAS_ROOM_KEY, 'true');
 
-    // Silent push updated room with new member to Supabase
     await pushStateToCloud(finalState);
-
-    if (isUserAdmin) {
-      showToast(`🛡️ Đang giám sát phòng "${finalState.roomName}" (Chế độ kiểm tra Admin).`);
-    } else {
-      showToast(`🎉 Chào mừng ${activeUser?.username || ''} đã vào phòng "${finalState.roomName}"!`);
-    }
+    showToast(`🎉 Chào mừng vào phòng "${finalState.roomName}"!`);
     return true;
   };
 
-  // Tự động chuyển phòng & kéo dữ liệu Cloud mới nhất khi người dùng đã đăng nhập mở link có ?room=XYZ
+  // Auto-join from pending room code
   useEffect(() => {
     if (!authUser || !pendingRoomCode) return;
-
     let isMounted = true;
 
-    const processPendingRoom = async () => {
+    const process = async () => {
       const targetRoom = pendingRoomCode.trim().toUpperCase();
-
       if (!hasActiveRoom || state.roomCode !== targetRoom) {
         await handleJoinRoom(targetRoom, authUser);
       } else {
-        // Đang ở đúng phòng này -> Kéo dữ liệu đám mây mới nhất
         await syncWithCloud(targetRoom, true);
       }
-
       if (isMounted) {
         setPendingRoomCode(null);
         try {
           const url = new URL(window.location.href);
           url.searchParams.delete('room');
-          url.searchParams.delete('invite');
-          window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ''));
+          window.history.replaceState({}, document.title, url.pathname);
         } catch {}
       }
     };
 
-    processPendingRoom();
+    process();
+    return () => { isMounted = false; };
+  }, [authUser, pendingRoomCode]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [authUser, pendingRoomCode, state.roomCode, hasActiveRoom, syncWithCloud, handleJoinRoom]);
-
-  // Tạo phòng mới (tự động lấy người tạo là tài khoản đang đăng nhập)
+  // Create room
   const handleCreateRoom = async (roomName: string, creatorName: string): Promise<string> => {
     const newCode = `P-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const activeUser = authUser;
     const authorName = activeUser?.username || creatorName.trim();
     const creatorId = activeUser?.id || 'usr_' + Date.now();
-    const creatorAvatar = activeUser?.avatar || '👑';
-    const creatorColor = activeUser?.color || 'bg-indigo-600 text-white';
 
     const creatorMember: Member = {
       id: creatorId,
       name: authorName,
-      avatar: creatorAvatar,
-      color: creatorColor,
+      avatar: activeUser?.avatar || '👑',
+      color: activeUser?.color || 'bg-indigo-600 text-white',
       points: 0,
       streak: 0,
       lateViolations: 0,
@@ -1187,56 +500,35 @@ export function App() {
     setState(newRoomState);
     setHasActiveRoom(true);
     localStorage.setItem(HAS_ROOM_KEY, 'true');
-    if (activeUser) {
-      updateUserRoom(activeUser.id, newCode);
-    }
+    if (activeUser) updateUserRoom(activeUser.id, newCode);
 
     await pushStateToCloud(newRoomState);
-
-    // Mở popup gợi ý công việc cho người dùng tuỳ chọn
-    setIsChoreRecOpen(true);
-    showToast(`🎉 Đã tạo phòng "${roomName}"! Hãy chọn các việc mẫu cho phòng.`);
+    showToast(`🎉 Đã tạo phòng "${roomName}"!`);
     return newCode;
   };
 
-  // Đăng nhập / Đăng ký thành công từ AuthScreen
-  const handleAuthSuccess = async (user: UserAccount, isNewRegistration?: boolean) => {
+  // Auth success
+  const handleAuthSuccess = async (user: UserAccount) => {
     setAuthUser(user);
-    if (isNewRegistration) {
-      setIsTutorialOpen(true);
-    }
-
-    // Nếu đăng nhập bằng tài khoản Quản trị viên (Admin), tự động mở Admin Dashboard
-    if (user.role === 'admin' || user.username.toLowerCase() === 'admin') {
-      setIsAdminDashboardOpen(true);
-      showToast(`🛡️ Xin chào Quản trị viên! Đang mở Bảng Quản Trị Hệ Thống.`);
-      return;
-    }
 
     const targetCode = pendingRoomCode || getPendingRoomInvite() || user.lastRoomCode;
-
     if (targetCode) {
       const success = await handleJoinRoom(targetCode, user);
       if (success) {
         setPendingRoomCode(null);
         setPendingRoomInvite(null);
-        try {
-          const url = new URL(window.location.href);
-          url.searchParams.delete('room');
-          window.history.replaceState({}, document.title, url.toString());
-        } catch {}
         return;
       }
     }
 
-    const userInCurrentState = state.members.some(
+    const userInRoom = state.members.some(
       (m) => m.id === user.id || m.name.toLowerCase() === user.username.toLowerCase()
     );
 
-    if (userInCurrentState && state.roomCode) {
+    if (userInRoom && state.roomCode) {
       setHasActiveRoom(true);
       localStorage.setItem(HAS_ROOM_KEY, 'true');
-      showToast(`Chào mừng ${user.username} trở lại phòng "${state.roomName}"!`);
+      showToast(`Chào mừng ${user.username} trở lại!`);
       syncWithCloud(state.roomCode);
     } else {
       setHasActiveRoom(false);
@@ -1245,137 +537,119 @@ export function App() {
     }
   };
 
-  // Đăng xuất tài khoản
+  // Logout
   const handleLogout = async () => {
-    // 1. Huỷ ngay lập tức quyền ID và thành viên hiện tại trong refs để chống rò rỉ thông báo
-    currentUserIdRef.current = null;
-    currentMemberRef.current = undefined;
-
-    // 2. Ngắt kết nối tất cả các kênh Supabase Realtime đang mở
     const supabase = getSupabaseClient();
     if (supabase) {
-      try {
-        supabase.removeAllChannels();
-      } catch (err) {
-        console.warn('Failed to remove supabase channels on logout', err);
-      }
+      try { supabase.removeAllChannels(); } catch {}
     }
-
-    // 3. Xoá sạch toàn bộ thông báo đang treo trên thanh trạng thái / màn hình khóa của máy
-    await clearAllActiveNotifications();
-
-    // 4. Đăng xuất tài khoản và chuyển về màn hình đăng nhập
     logoutAccount();
     setAuthUser(null);
     setHasActiveRoom(false);
     localStorage.removeItem(HAS_ROOM_KEY);
-    showToast('Đã đăng xuất tài khoản thành công.');
+    showToast('Đã đăng xuất.');
   };
 
-  // Áp dụng các việc được gợi ý khi tạo phòng
-  const handleApplyRecommendedChores = (
-    selectedChores: Omit<Chore, 'id' | 'isCompletedToday' | 'assignedTo'>[]
-  ) => {
-    if (selectedChores.length === 0) {
-      setIsChoreRecOpen(false);
-      return;
-    }
-
-    const newChores: Chore[] = selectedChores.map((sc, idx) => ({
-      ...sc,
-      id: `c_${Date.now()}_${idx}`,
-      isCompletedToday: false,
-      assignedTo: state.members[0]?.id || currentUserId || '',
-    }));
-
-    const balancedChores = autoBalanceChores(newChores, state.members);
-
-    setState((prev) => ({
-      ...prev,
-      chores: balancedChores,
-    }));
-
-    setIsChoreRecOpen(false);
-    showToast(`🎉 Đã thêm ${selectedChores.length} công việc mẫu vào phòng!`);
-  };
-
-  // Bỏ qua gợi ý công việc
-  const handleSkipRecommendedChores = () => {
-    setIsChoreRecOpen(false);
-    showToast('Đã bắt đầu với danh sách việc trống. Bạn có thể tự thêm việc bất kỳ lúc nào!');
-  };
-
-  // Rời phòng (Quay về màn hình chào mừng)
+  // Leave room
   const handleLeaveRoom = () => {
     localStorage.removeItem(HAS_ROOM_KEY);
     setHasActiveRoom(false);
     showToast('Đã quay về màn hình chọn phòng.');
   };
 
-  const handleNudge = async (chore: Chore, assignee?: Member) => {
-    playNudgeSound();
-    const tag = assignee ? `@${assignee.zaloName || assignee.name}` : 'bạn';
-    const text = `📢 [NHẮC VIỆC RIÊNG] Alo ${tag} ơi!\nĐến giờ làm "${chore.title}" rồi nè (${chore.dueTime}). Quá giờ sẽ bị trừ -${chore.points}đ đó nha! 🧹\n🔗 Link vào app: ${window.location.origin}?room=${encodeURIComponent(state.roomCode)}\n🔑 Mã phòng: ${state.roomCode}`;
-    
-    await shareToZalo(text);
-    showToast(`Đã chuẩn bị lời nhắc cho ${assignee?.name}! Hãy dán vào Zalo nhé.`);
-  };
-
-  // Thêm công việc trực tiếp (Luật mới: Ai cũng có thể thêm việc, tự động dùng thuật toán chia đều toàn phòng)
+  // Add chore
   const handleAddChore = (newChoreData: Omit<Chore, 'id' | 'isCompletedToday'>) => {
-    const newChoreId = 'chore_' + Date.now();
     const newChore: Chore = {
       ...newChoreData,
-      id: newChoreId,
+      id: 'chore_' + Date.now(),
       isCompletedToday: false,
     };
 
-    // Khi thêm việc mới: Tự động chạy thuật toán tái cân bằng toàn bộ công việc trong phòng
-    // để tính toán lại điểm gánh của mọi người, đảm bảo công bằng kể cả khi mọi người bằng điểm nhau
     const combinedChores = [newChore, ...state.chores];
     const balancedChores = autoBalanceChores(combinedChores, state.members, {
       preserveCompleted: true,
     });
 
-    const assignedChore = balancedChores.find((c) => c.id === newChoreId) || newChore;
+    const assignedChore = balancedChores.find((c) => c.id === newChore.id) || newChore;
     const assignedMember = state.members.find((m) => m.id === assignedChore.assignedTo);
 
-    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    const creatorName = currentMember?.name || 'Thành viên';
-    const creatorId = currentMember?.id || currentUserId || 'm_unknown';
-    const isOnce = newChoreData.frequency === 'once';
+    setState((prev) => ({ ...prev, chores: balancedChores }));
+    showToast(`🎉 Đã thêm "${assignedChore.title}" — giao cho ${assignedMember?.name || 'thành viên'}!`);
+  };
 
-    const newNotification: AppNotification = {
-      id: 'notif_' + Date.now(),
-      title: isOnce ? '⚡ Việc phát sinh mới (1 lần)' : '📋 Công việc mới được thêm',
-      message: `${creatorName} vừa thêm việc "${assignedChore.title}" (+${assignedChore.points}đ). Thuật toán đã tự động cân bằng & phân công cho: ${
-        assignedMember?.name || 'Tự động luân phiên'
-      }.`,
-      type: 'chore_completed',
-      createdAt: `Hôm nay ${nowTimeStr}`,
-      readBy: [creatorId],
-      choreId: assignedChore.id,
+  // Delete chore
+  const handleDeleteChore = (choreId: string) => {
+    const target = state.chores.find((c) => c.id === choreId);
+    if (!target) return;
+    if (window.confirm(`Xóa công việc "${target.title}"?`)) {
+      setState((prev) => ({
+        ...prev,
+        chores: prev.chores.filter((c) => c.id !== choreId),
+      }));
+      showToast(`Đã xóa việc "${target.title}".`);
+    }
+  };
+
+  // Add member
+  const handleAddMember = (name: string, avatar: string, zaloName: string) => {
+    const avgPoints = state.members.length > 0
+      ? Math.max(0, Math.round(state.members.reduce((sum, m) => sum + m.points, 0) / state.members.length))
+      : 0;
+
+    const newMember: Member = {
+      id: 'm_' + Date.now(),
+      name,
+      avatar,
+      color: 'bg-indigo-500 text-white',
+      points: avgPoints,
+      streak: 0,
+      lateViolations: 0,
+      zaloName,
     };
 
     setState((prev) => ({
       ...prev,
-      chores: balancedChores,
-      notifications: [newNotification, ...(prev.notifications || [])],
+      members: [...prev.members, newMember],
+      rebalancePendingTomorrow: true,
     }));
-
-    showToast(
-      `🎉 Đã thêm "${assignedChore.title}" (+${assignedChore.points}đ) & thuật toán đã tự động chia đều cho ${assignedMember?.name || 'thành viên'}!`
-    );
+    showToast(`🎉 Đã thêm ${name}!`);
   };
 
-  // Tái cân bằng toàn bộ công việc nhà trong phòng theo thuật toán công bằng
+  // Delete member
+  const handleDeleteMember = (id: string) => {
+    const remainingMembers = state.members.filter((m) => m.id !== id);
+    const updatedChores = state.chores.map((chore) => {
+      if (chore.assignedTo === id && remainingMembers.length > 0) {
+        return { ...chore, assignedTo: remainingMembers[0].id };
+      }
+      return chore;
+    });
+
+    setState((prev) => ({
+      ...prev,
+      members: remainingMembers,
+      chores: updatedChores,
+    }));
+    if (currentUserId === id) {
+      setHasActiveRoom(false);
+      localStorage.removeItem(HAS_ROOM_KEY);
+    }
+    showToast('Đã xóa thành viên.');
+  };
+
+  const handleUpdateRoomName = (name: string) => {
+    setState((prev) => ({ ...prev, roomName: name }));
+    showToast('Đã cập nhật tên phòng!');
+  };
+
+  // Tự động phân chia lại công việc công bằng theo thuật toán tải trọng điểm
   const handleRebalanceChores = async () => {
     const realMembers = (state.members || []).filter(
       (m) => m.id !== 'usr_admin_root' && m.name.toLowerCase() !== 'admin'
     );
 
     if (realMembers.length === 0 || state.chores.length === 0) {
-      showToast('⚠️ Phòng chưa có đủ công việc hoặc thành viên để phân chia.');
+      showToast('⚠️ Chưa có đủ công việc hoặc thành viên để phân chia.');
       return;
     }
 
@@ -1383,14 +657,13 @@ export function App() {
       preserveCompleted: true,
     });
 
-    // Kiểm tra xem công việc đã được chia công bằng tối ưu chưa
     const isAlreadyFair = state.chores.every((c) => {
       const b = balancedChores.find((bc) => bc.id === c.id);
       return b && b.assignedTo === c.assignedTo;
     });
 
     if (isAlreadyFair) {
-      showToast('✨ Công việc đã được phân chia công bằng tối ưu rồi, không cần thay đổi.');
+      showToast('✨ Công việc đã được phân chia công bằng tối ưu rồi!');
       return;
     }
 
@@ -1408,414 +681,25 @@ export function App() {
     saveState(newState);
     await pushStateToCloud(newState);
 
-    showToast('⚖️ Đã dùng thuật toán phân chia lại toàn bộ công việc đồng đều cho mọi người!');
+    showToast('⚖️ Đã tự động chia đều lại việc cho mọi người!');
   };
 
-  // Đề xuất xóa thành viên (Nếu phòng > 1 người -> Cần biểu quyết quá bán)
-  const handleRequestDeleteMember = (targetMemberId: string) => {
-    const target = state.members.find((m) => m.id === targetMemberId);
-    if (!target) return;
-
-    if (state.members.length <= 1) {
-      handleDeleteMember(targetMemberId);
-      return;
-    }
-
-    const creatorName = currentMember?.name || 'Thành viên';
-    const creatorId = currentMember?.id || currentUserId || 'm_unknown';
-    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    const proposalId = 'prop_del_' + Date.now();
-
-    const newProposal: RoomProposal = {
-      id: proposalId,
-      type: 'delete_member',
-      creatorId,
-      creatorName,
-      title: `Xóa thành viên: ${target.name} ${target.avatar}`,
-      description: `${creatorName} đề xuất xóa ${target.name} khỏi phòng. Cần quá bán thành viên đồng ý.`,
-      createdAt: nowTimeStr,
-      targetMemberId: target.id,
-      targetMemberName: target.name,
-      votes: {
-        [creatorId]: 'agree', // Người đề xuất tính là 1 phiếu Đồng ý
-      },
-      status: 'pending',
-    };
-
-    const newNotification: AppNotification = {
-      id: 'notif_' + Date.now(),
-      title: '🗳️ Biểu quyết xóa thành viên',
-      message: `${creatorName} đề xuất xóa ${target.name} khỏi phòng. Hãy tham gia bỏ phiếu!`,
-      type: 'proposal_vote',
-      createdAt: `Hôm nay ${nowTimeStr}`,
-      readBy: [creatorId],
-      proposalId,
-    };
-
-    setState((prev) => ({
-      ...prev,
-      proposals: [newProposal, ...(prev.proposals || [])],
-      notifications: [newNotification, ...(prev.notifications || [])],
-    }));
-
-    showToast(`🗳️ Đã gửi đề xuất xóa ${target.name}! Cần hơn nửa thành viên đồng ý để phê duyệt.`);
-  };
-
-  // Sửa công việc trực tiếp (theo luật mới: cập nhật ngay lập tức, không cần chờ vote)
-  const handleRequestEditChore = async (
-    choreId: string,
-    updatedData: Partial<Omit<Chore, 'id' | 'assignedTo' | 'isCompletedToday'>>
-  ) => {
-    const targetChore = state.chores.find((c) => c.id === choreId);
-    if (!targetChore) return;
-
-    const updatedChores = state.chores.map((c) =>
-      c.id === choreId
-        ? {
-            ...c,
-            ...updatedData,
-            assignedTo: c.assignedTo, // Giữ nguyên người làm theo logic phân chia công việc
-            isCompletedToday: c.isCompletedToday,
-          }
-        : c
-    );
-
-    const newState: AppState = {
-      ...state,
-      chores: updatedChores,
-      updatedAt: new Date().toISOString(),
-      version: (state.version || 0) + 1,
-      lastUpdatedBy: clientIdRef.current,
-    };
-
-    lastCanonicalSigRef.current = getCanonicalStateSignature(newState);
-    setState(newState);
-    saveState(newState);
-    await pushStateToCloud(newState);
-
-    showToast(`✓ Đã cập nhật công việc "${targetChore.title}" thành công!`);
-  };
-
-  // Xóa công việc trực tiếp (theo luật mới: xóa ngay lập tức khỏi phòng, không cần chờ vote)
-  const handleRequestDeleteChore = async (choreId: string) => {
-    const targetChore = state.chores.find((c) => c.id === choreId);
-    if (!targetChore) return;
-
-    const creatorName = currentMember?.name || 'Thành viên';
-    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-
-    const updatedChores = state.chores.filter((c) => c.id !== choreId);
-    const updatedProposals = (state.proposals || []).filter((p) => p.targetChoreId !== choreId);
-
-    const deleteLog: ChoreLog = {
-      id: 'log_del_' + Date.now(),
-      choreId: 'del_' + choreId,
-      choreTitle: `Xóa việc: ${targetChore.title}`,
-      memberId: currentUserId || 'usr_unknown',
-      memberName: creatorName,
-      completedAt: `Hôm nay ${nowTimeStr}`,
-      pointsEarned: 0,
-      type: 'completed',
-      dateStr: getTodayDateString(),
-      note: `${creatorName} đã xóa vĩnh viễn việc "${targetChore.title}"`,
-    };
-
-    const newState: AppState = {
-      ...state,
-      chores: updatedChores,
-      proposals: updatedProposals,
-      logs: [deleteLog, ...(state.logs || [])],
-      updatedAt: new Date().toISOString(),
-      version: (state.version || 0) + 1,
-      lastUpdatedBy: clientIdRef.current,
-    };
-
-    lastCanonicalSigRef.current = getCanonicalStateSignature(newState);
-    setState(newState);
-    saveState(newState);
-    await pushStateToCloud(newState);
-
-    showToast(`✓ Đã xóa vĩnh viễn công việc "${targetChore.title}" khỏi phòng!`);
-  };
-
-  // Bỏ phiếu biểu quyết (Dân chủ phòng chung)
-  const handleVoteProposal = (proposalId: string, vote: 'agree' | 'reject') => {
-    if (!currentUserId) {
-      showToast('⚠️ Vui lòng chọn bạn là ai trong phòng trước khi bỏ phiếu!');
-      return;
-    }
-
-    const proposal = (state.proposals || []).find((p) => p.id === proposalId);
-    if (!proposal || proposal.status !== 'pending') return;
-
-    const voterId = currentUserId;
-    const voterName = currentMember?.name || 'Thành viên';
-    const nowTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-
-    const updatedVotes = {
-      ...proposal.votes,
-      [voterId]: vote,
-    };
-
-    const totalMembers = state.members.length;
-    const requiredVotes = Math.floor(totalMembers / 2) + 1; // Quá bán (> 50%)
-    const agreeCount = Object.values(updatedVotes).filter((v) => v === 'agree').length;
-    const rejectCount = Object.values(updatedVotes).filter((v) => v === 'reject').length;
-
-    let newStatus: 'pending' | 'approved' | 'rejected' = 'pending';
-    let updatedChores = [...state.chores];
-    let updatedMembers = [...state.members];
-    let rebalancePending = state.rebalancePendingTomorrow;
-
-    if (agreeCount >= requiredVotes) {
-      // ĐÃ ĐẠT QUÁ BÁN ĐỒNG Ý -> THÔNG QUA
-      newStatus = 'approved';
-
-      if (proposal.type === 'add_chore' && proposal.choreData) {
-        const newChore: Chore = {
-          ...proposal.choreData,
-          id: 'chore_' + Date.now(),
-          isCompletedToday: false,
-        };
-        updatedChores = [newChore, ...updatedChores];
-      } else if (proposal.type === 'delete_member' && proposal.targetMemberId) {
-        const delId = proposal.targetMemberId;
-        updatedMembers = updatedMembers.filter((m) => m.id !== delId);
-        updatedChores = updatedChores.map((c) =>
-          c.assignedTo === delId && updatedMembers.length > 0
-            ? { ...c, assignedTo: updatedMembers[0].id }
-            : c
-        );
-        rebalancePending = true;
-      } else if (proposal.type === 'edit_chore' && proposal.targetChoreId && proposal.updatedChoreData) {
-        // Cập nhật công việc: Không cho phép thay đổi người làm vào ngày hôm sau, vẫn tuân theo logic phân chia công việc
-        const choreId = proposal.targetChoreId;
-        updatedChores = updatedChores.map((c) => {
-          if (c.id === choreId) {
-            return {
-              ...c,
-              ...proposal.updatedChoreData,
-              assignedTo: c.assignedTo,
-              isCompletedToday: c.isCompletedToday,
-            };
-          }
-          return c;
-        });
-      } else if (proposal.type === 'delete_chore' && proposal.targetChoreId) {
-        // Xóa công việc khỏi phòng chung
-        const choreId = proposal.targetChoreId;
-        updatedChores = updatedChores.filter((c) => c.id !== choreId);
-      }
-    } else if (rejectCount >= Math.ceil(totalMembers / 2)) {
-      // Số phiếu từ chối đã quá bán -> BÁC BỎ
-      newStatus = 'rejected';
-    }
-
-    const updatedProposals = (state.proposals || []).map((p) =>
-      p.id === proposalId
-        ? {
-            ...p,
-            votes: updatedVotes,
-            status: newStatus,
-          }
-        : p
-    );
-
-    let updatedNotifications = [...(state.notifications || [])];
-    if (newStatus !== 'pending') {
-      const resultNotif: AppNotification = {
-        id: 'notif_res_' + Date.now(),
-        title: newStatus === 'approved' ? '🎉 Đề xuất đã được thông qua!' : '❌ Đề xuất bị từ chối',
-        message:
-          newStatus === 'approved'
-            ? `Đề xuất "${proposal.title}" đã đạt ${agreeCount}/${totalMembers} phiếu thuận và đã được thực thi!`
-            : `Đề xuất "${proposal.title}" không đủ số phiếu thuận (${rejectCount} phiếu chống) và đã bị hủy.`,
-        type: 'proposal_result',
-        createdAt: `Hôm nay ${nowTimeStr}`,
-        readBy: [voterId],
-        proposalId: proposal.id,
-      };
-      updatedNotifications = [resultNotif, ...updatedNotifications];
-    }
-
-    const updatedLogs: ChoreLog[] = newStatus !== 'pending'
-      ? [
-          {
-            id: 'log_vote_' + Date.now(),
-            choreId: 'vote',
-            choreTitle: proposal.title,
-            memberId: voterId,
-            memberName: voterName,
-            completedAt: `Hôm nay ${nowTimeStr}`,
-            pointsEarned: 0,
-            type: 'completed',
-            dateStr: getTodayDateString(),
-            note:
-              newStatus === 'approved'
-                ? `Biểu quyết thông qua: ${proposal.title} (${agreeCount}/${totalMembers} phiếu)`
-                : `Biểu quyết bác bỏ: ${proposal.title} (${rejectCount} phiếu chống)`,
-          },
-          ...state.logs,
-        ]
-      : state.logs;
-
-    setState((prev) => ({
-      ...prev,
-      proposals: updatedProposals,
-      notifications: updatedNotifications,
-      chores: updatedChores,
-      members: updatedMembers,
-      rebalancePendingTomorrow: rebalancePending,
-      logs: updatedLogs,
-    }));
-
-    if (newStatus === 'approved') {
-      showToast(`🎉 Đề xuất "${proposal.title}" đã được thông qua (${agreeCount}/${totalMembers} phiếu)!`);
-    } else if (newStatus === 'rejected') {
-      showToast(`❌ Đề xuất "${proposal.title}" đã bị từ chối (${rejectCount} phiếu chống).`);
-    } else {
-      showToast(`Đã ghi nhận phiếu ${vote === 'agree' ? 'Đồng ý' : 'Từ chối'} của bạn!`);
-    }
-  };
-
-  // Đánh dấu đã đọc tất cả thông báo
-  const handleMarkAllNotificationsAsRead = () => {
-    if (!currentUserId) return;
-    const updated = (state.notifications || []).map((n) => {
-      const readList = Array.isArray(n.readBy) ? n.readBy : [];
-      return {
-        ...n,
-        readBy: readList.includes(currentUserId) ? readList : [...readList, currentUserId],
-      };
-    });
-    setState((prev) => ({
-      ...prev,
-      notifications: updated,
-    }));
-    showToast('Đã đánh dấu đã đọc tất cả thông báo!');
-  };
-
-  const handleAddMember = (name: string, avatar: string, zaloName: string) => {
-    // 1. Tính điểm trung bình của các thành viên hiện tại trong phòng
-    // Tránh thiệt thòi cho người mới khi phòng đã hoạt động lâu
-    const existingMembers = state.members;
-    const avgPoints = existingMembers.length > 0
-      ? Math.max(0, Math.round(existingMembers.reduce((sum, m) => sum + m.points, 0) / existingMembers.length))
-      : 0;
-
-    const newMemberId = 'm_' + Date.now();
-    const newMember: Member = {
-      id: newMemberId,
-      name,
-      avatar,
-      color: 'bg-indigo-500 text-white',
-      points: avgPoints, // Cấp điểm khởi đầu bằng điểm trung bình phòng
-      streak: 0,
-      lateViolations: 0,
-      zaloName,
-    };
-
-    const updatedMembers = [...existingMembers, newMember];
-
-    // 2. KHÔNG đảo lộn công việc của ngày hôm nay (giữ nguyên để tránh ảnh hưởng việc đang làm/đã làm)
-    // Đánh dấu rebalancePendingTomorrow = true để tự động chia đều cho người mới từ NGÀY MAI
-    const joinLog: ChoreLog = {
-      id: 'log_join_' + Date.now(),
-      choreId: 'join',
-      choreTitle: 'Gia nhập phòng',
-      memberId: newMember.id,
-      memberName: newMember.name,
-      completedAt: `Hôm nay ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-      pointsEarned: avgPoints,
-      type: 'completed',
-      dateStr: getTodayDateString(),
-      note: avgPoints > 0
-        ? `Cấp ${avgPoints}đ khởi đầu (TB phòng). Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai`
-        : `Gia nhập phòng. Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai`,
-    };
-
-    setState((prev) => ({
-      ...prev,
-      members: updatedMembers,
-      rebalancePendingTomorrow: true,
-      logs: [joinLog, ...prev.logs],
-    }));
-
-    showToast(
-      avgPoints > 0
-        ? `🎉 Đã thêm ${name} (Khởi điểm: ${avgPoints}đ)! Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai.`
-        : `🎉 Đã thêm ${name}! Việc nhà sẽ bắt đầu chia đều cho ${name} từ ngày mai.`
-    );
-  };
-
-  const handleDeleteMember = (id: string) => {
-    const remainingMembers = state.members.filter((m) => m.id !== id);
-    const updatedChores = state.chores.map((chore) => {
-      if (chore.assignedTo === id && remainingMembers.length > 0) {
-        return {
-          ...chore,
-          assignedTo: remainingMembers[0].id,
-        };
-      }
-      return chore;
-    });
-
-    setState((prev) => ({
-      ...prev,
-      members: remainingMembers,
-      chores: updatedChores,
-      rebalancePendingTomorrow: true,
-    }));
-    if (currentUserId === id) {
-      setHasActiveRoom(false);
-      localStorage.removeItem(HAS_ROOM_KEY);
-    }
-    showToast('Đã xóa thành viên. Lịch việc nhà sẽ được cân bằng lại vào ngày mai.');
-  };
-
-  const handleUpdateRoomName = (name: string) => {
-    setState((prev) => ({ ...prev, roomName: name }));
-    showToast('Đã cập nhật tên phòng!');
-  };
-
-  // Các công việc thực tế được lên lịch làm vào HÔM NAY
+  // Filtered chores
   const todayScheduledChores = useMemo(() => {
     return state.chores.filter((c) => isChoreScheduledToday(c));
   }, [state.chores]);
 
-  const todayCompletedCount = todayScheduledChores.filter((c) => c.isCompletedToday).length;
-  const todayUncompletedCount = todayScheduledChores.filter((c) => !c.isCompletedToday).length;
-
-  // Filter chores
   const filteredChores = useMemo(() => {
-    return state.chores.filter((chore) => {
-      const isToday = isChoreScheduledToday(chore);
-      if (activeTab === 'my_chores') {
-        return chore.assignedTo === currentUserId && isToday;
-      }
-      if (activeTab === 'pending') {
-        return isToday && !chore.isCompletedToday;
-      }
-      if (activeTab === 'completed') {
-        return isToday && chore.isCompletedToday;
-      }
-      if (activeTab === 'today_all') {
-        return isToday;
-      }
-      // 'all': Hiển thị toàn bộ công việc của phòng (cả hôm nay và các ngày khác)
-      return true;
-    });
-  }, [state.chores, activeTab, currentUserId]);
+    if (activeTab === 'done') return todayScheduledChores.filter((c) => c.isCompletedToday);
+    return todayScheduledChores.filter((c) => !c.isCompletedToday);
+  }, [todayScheduledChores, activeTab]);
 
-  const myPendingCount = myChores.filter((c) => !c.isCompletedToday).length;
+  const todayCompletedCount = todayScheduledChores.filter((c) => c.isCompletedToday).length;
+  const todayPendingCount = todayScheduledChores.filter((c) => !c.isCompletedToday).length;
 
-  const todayFormatted = new Date().toLocaleDateString('vi-VN', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'numeric',
-  });
+  // === RENDER ===
 
-  // 1. Nếu người dùng chưa đăng nhập: HIỆN MÀN HÌNH ĐĂNG NHẬP / ĐĂNG KÝ
+  // 1. Auth screen
   if (!authUser) {
     return (
       <AuthScreen
@@ -1825,250 +709,126 @@ export function App() {
     );
   }
 
-  // 1.5. Nếu là Quản trị viên và đang mở Admin Dashboard: HIỆN BẢNG ĐIỀU KHIỂN QUẢN TRỊ
-  if (isAdmin && isAdminDashboardOpen) {
+  // 2. Welcome screen (no room)
+  if (!hasActiveRoom) {
     return (
-      <AdminDashboard
-        adminUser={authUser}
+      <WelcomeScreen
+        currentUser={authUser}
         onLogout={handleLogout}
-        onSwitchToApp={async (targetRoomCode) => {
-          setIsAdminDashboardOpen(false);
-          if (targetRoomCode) {
-            await handleJoinRoom(targetRoomCode, authUser);
-          }
-        }}
+        onJoinByCode={handleJoinRoom}
+        onJoinByLink={handleJoinRoom}
+        onCreateRoom={handleCreateRoom}
       />
     );
   }
 
-  // 2. Nếu đã đăng nhập nhưng chưa có phòng: HIỆN GIAO DIỆN CHÀO MỪNG
-  if (!hasActiveRoom) {
-    return (
-      <>
-        {isAdmin && (
-          <div className="fixed top-3 right-3 z-50">
-            <button
-              onClick={() => setIsAdminDashboardOpen(true)}
-              className="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-lg flex items-center space-x-1.5 cursor-pointer hover:bg-slate-800 border border-slate-700"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Admin Dashboard</span>
-            </button>
-          </div>
-        )}
-        <WelcomeScreen
-          currentUser={authUser}
-          onLogout={handleLogout}
-          onJoinByCode={handleJoinRoom}
-          onJoinByLink={handleJoinRoom}
-          onCreateRoom={handleCreateRoom}
-        />
-        <TutorialModal
-          isOpen={isTutorialOpen}
-          onClose={() => setIsTutorialOpen(false)}
-          userId={authUser?.id}
-        />
-      </>
-    );
-  }
-
+  // 3. Main app
   return (
-    <div 
+    <div
       className="min-h-screen max-w-md mx-auto relative bg-slate-50 flex flex-col font-sans"
       style={{
         paddingTop: 'max(env(safe-area-inset-top), 0px)',
         paddingBottom: 'max(env(safe-area-inset-bottom), 5rem)',
       }}
     >
-      {/* Sleek Top Header (Bấm tên phòng để mở quản lý mã phòng) */}
       <Navbar
         roomName={state.roomName}
-        uncompletedCount={todayUncompletedCount}
-        unreadNotificationsCount={unreadNotificationsCount}
-        syncStatus={syncStatus}
-        onManualSync={() => syncWithCloud(state.roomCode, true)}
         onOpenAddChore={() => setIsAddChoreOpen(true)}
-        onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenMenu={() => setIsMenuOpen(true)}
-        onOpenRoomModal={() => setIsRoomModalOpen(true)}
       />
 
-      {/* Main Content */}
       <main className="p-3.5 space-y-3.5 flex-1">
-        {/* Admin Inspector Mode Banner */}
-        {isAdmin && (
-          <div className="p-3 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl shadow-md border border-indigo-900/50 flex items-center justify-between">
-            <div className="flex items-center space-x-2.5 min-w-0 mr-2">
-              <div className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded-xl border border-indigo-500/30 shrink-0">
-                <ShieldCheck className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-bold flex items-center space-x-1.5">
-                  <span className="truncate">Chế độ Giám Sát (Admin)</span>
-                  <span className="text-[10px] px-1.5 py-0.2 bg-indigo-500/20 text-indigo-300 rounded-md shrink-0 border border-indigo-400/20">
-                    Chỉ kiểm tra
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-300 truncate">
-                  Admin không phải thành viên phòng • {state.members.length} thành viên thật
-                </div>
-              </div>
-            </div>
+        {/* Progress */}
+        <div className="flex items-center justify-between text-xs text-slate-600 px-1">
+          <span className="font-semibold text-slate-700 capitalize">
+            {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric' })}
+          </span>
+          <span className="font-semibold">
+            Tiến độ: <span className="text-indigo-600 font-bold">{todayCompletedCount}/{todayScheduledChores.length}</span>
+          </span>
+        </div>
 
-            <div className="flex items-center space-x-1.5 shrink-0">
+        {/* Compact Fairness & Points Bar */}
+        {state.members.length > 0 && (
+          <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center space-x-1.5 font-bold text-slate-700">
+                <Scale className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Chia việc công bằng</span>
+              </div>
               <button
+                type="button"
                 onClick={handleRebalanceChores}
-                className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold rounded-xl shadow-xs transition flex items-center space-x-1 cursor-pointer"
-                title="Cân bằng lại công việc theo đúng công thức chia việc công bằng"
+                className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center space-x-1 cursor-pointer transition hover:underline"
+                title="Tự động phân bổ lại việc chưa hoàn thành theo điểm số"
               >
-                <Scale className="w-3.5 h-3.5" />
-                <span>Cân bằng</span>
+                <span>Tự động chia đều →</span>
               </button>
-              <button
-                onClick={() => setIsAdminDashboardOpen(true)}
-                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold rounded-xl transition cursor-pointer"
-                title="Về Bảng Quản Trị Hệ Thống (Admin Dashboard)"
-              >
-                <span>Về Panel</span>
-              </button>
+            </div>
+
+            <div className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar">
+              {[...state.members]
+                .sort((a, b) => a.points - b.points)
+                .map((member, idx, arr) => {
+                  const isLowest = idx === 0 && arr.length > 1;
+                  return (
+                    <div
+                      key={member.id}
+                      className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl text-xs shrink-0 border transition ${
+                        isLowest
+                          ? 'bg-amber-50/90 border-amber-200 text-amber-950 font-medium'
+                          : 'bg-slate-50 border-slate-200/80 text-slate-700'
+                      }`}
+                    >
+                      <span className="text-sm">{member.avatar}</span>
+                      <span className="font-semibold">{member.name}</span>
+                      <span className="font-bold text-indigo-600 ml-0.5">{member.points}đ</span>
+                      {isLowest && (
+                        <span className="text-[9px] px-1 py-0.2 bg-amber-200 text-amber-900 rounded font-bold ml-1">
+                          Ưu tiên việc tới
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           </div>
         )}
 
-        {/* Democratic Proposal Voting Banner */}
-        <ProposalVoteCard
-          proposals={state.proposals || []}
-          members={state.members}
-          currentUserId={currentUserId}
-          onVote={handleVoteProposal}
-        />
-
-        {/* Personalized Task Highlight Banner (Chỉ hiện cho thành viên thật trong phòng) */}
-        {!isAdmin && (
-          <PersonalTaskBanner
-            currentMember={currentMember}
-            myChores={myChores}
-            incomingRequests={incomingTransferRequests}
-            onToggleComplete={handleToggleComplete}
-            onRequestNotification={handleRequestNotification}
-            notificationPermission={notificationPermission}
-            onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
-            onOpenTransfer={(chore) => setTransferTargetChore(chore)}
-            onAcceptTransfer={handleAcceptTransfer}
-            onDeclineTransfer={handleDeclineTransfer}
-            onOpenDetail={(chore) => setSelectedChoreForDetail(chore)}
-          />
-        )}
-
-        {/* Date & Quick Progress / Schedule trigger */}
-        <button
-          type="button"
-          onClick={() => setIsScheduleOpen(true)}
-          className="w-full flex items-center justify-between text-xs text-slate-600 px-3 py-2 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-100/80 rounded-xl cursor-pointer transition shadow-xs group text-left"
-          title="Bấm để xem lịch tuần, tháng & bảng hoạt động đóng góp"
-        >
-          <div className="flex items-center space-x-1.5 font-medium truncate">
-            <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0 group-hover:scale-110 transition-transform" />
-            <span className="capitalize truncate font-semibold text-slate-700">{todayFormatted}</span>
-            <span className="text-[10px] text-indigo-700 bg-indigo-100/90 font-bold px-1.5 py-0.5 rounded-md ml-1 shrink-0">
-              Lịch & Bảng hoạt động →
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-1 font-semibold text-slate-700 shrink-0 whitespace-nowrap ml-2">
-            <span>Tiến độ hôm nay:</span>
-            <span className="text-indigo-600 font-bold">
-              {todayCompletedCount}/{todayScheduledChores.length}
-            </span>
-          </div>
-        </button>
-
-        {/* Fairness & Karma Board */}
-        <FairnessBoard 
-          members={state.members.filter(
-            (m) => m.id !== 'usr_admin_root' && m.name?.trim().toLowerCase() !== 'admin'
-          )} 
-          onRebalance={handleRebalanceChores}
-        />
-
-        {/* Filter Tabs */}
-        <div className="flex items-center space-x-1.5 bg-slate-200/70 p-1 rounded-2xl text-xs font-semibold overflow-x-auto no-scrollbar scroll-smooth">
-          {!isAdmin && (
-            <button
-              onClick={() => setActiveTab('my_chores')}
-              className={`px-3 py-1.5 rounded-xl transition flex items-center space-x-1 shrink-0 whitespace-nowrap ${
-                activeTab === 'my_chores'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              <span>Của tôi ({myChores.length})</span>
-              {myPendingCount > 0 && (
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              )}
-            </button>
-          )}
-
+        {/* Tabs */}
+        <div className="flex items-center space-x-1.5 bg-slate-200/70 p-1 rounded-2xl text-xs font-semibold">
           <button
-            onClick={() => setActiveTab('today_all')}
-            className={`px-3 py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${
-              activeTab === 'today_all'
+            onClick={() => setActiveTab('today')}
+            className={`flex-1 px-3 py-1.5 rounded-xl transition ${
+              activeTab === 'today'
                 ? 'bg-white text-slate-800 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Hôm nay ({todayScheduledChores.length})
+            Cần làm ({todayPendingCount})
           </button>
-
           <button
-            onClick={() => setActiveTab('pending')}
-            className={`px-3 py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${
-              activeTab === 'pending'
-                ? 'bg-white text-amber-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Chưa xong ({todayUncompletedCount})
-          </button>
-
-          <button
-            onClick={() => setActiveTab('completed')}
-            className={`px-3 py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${
-              activeTab === 'completed'
+            onClick={() => setActiveTab('done')}
+            className={`flex-1 px-3 py-1.5 rounded-xl transition ${
+              activeTab === 'done'
                 ? 'bg-white text-emerald-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Đã xong ({todayCompletedCount})
           </button>
-
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`px-3 py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${
-              activeTab === 'all'
-                ? 'bg-white text-indigo-700 shadow-xs'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-            title="Xem toàn bộ các công việc trong phòng (cả hôm nay và các thứ khác)"
-          >
-            Toàn bộ ({state.chores.length})
-          </button>
         </div>
 
-        {/* Chores List */}
+        {/* Chore List */}
         <div className="space-y-2.5">
           {filteredChores.length === 0 ? (
             <div className="text-center py-10 px-4 bg-white rounded-2xl border border-slate-200/80 space-y-2">
               <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mx-auto">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
-              <h4 className="font-bold text-slate-800 text-xs">Không có việc nào ở mục này</h4>
-              <p className="text-[11px] text-slate-500">
-                {activeTab === 'my_chores'
-                  ? 'Hôm nay bạn không có việc nhà, hoặc đã hoàn thành hết!'
-                  : 'Tất cả công việc đã được hoàn tất.'}
-              </p>
+              <h4 className="font-bold text-slate-800 text-xs">
+                {activeTab === 'today' ? 'Tất cả đã xong! 🎉' : 'Chưa có việc nào hoàn thành'}
+              </h4>
             </div>
           ) : (
             filteredChores.map((chore) => (
@@ -2078,35 +838,14 @@ export function App() {
                 members={state.members}
                 currentUserId={currentUserId}
                 onToggleComplete={handleToggleComplete}
-                onNudge={handleNudge}
-                onOpenTransfer={(c) => setTransferTargetChore(c)}
-                onOpenDetail={(c) => setSelectedChoreForDetail(c)}
-                onOpenRequestRedo={(c) => setSelectedChoreForRedo(c)}
+                onDeleteChore={handleDeleteChore}
               />
             ))
           )}
         </div>
       </main>
 
-      {/* Compact Floating Bottom-Right Quick Zalo Reminder Trigger */}
-      <div 
-        className="fixed z-20 pointer-events-auto"
-        style={{
-          bottom: 'max(env(safe-area-inset-bottom), 1.25rem)',
-          right: 'max(calc((100vw - 28rem) / 2 + 1rem), 1rem)',
-        }}
-      >
-        <button
-          onClick={() => setIsZaloOpen(true)}
-          title="Gửi bảng nhắc việc vào nhóm Zalo"
-          className="py-2.5 px-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-full shadow-lg shadow-blue-500/30 flex items-center space-x-1.5 transition-all transform hover:scale-105 active:scale-95 border border-white/25 cursor-pointer"
-        >
-          <Share2 className="w-3.5 h-3.5 shrink-0" />
-          <span className="whitespace-nowrap">Nhắc Zalo</span>
-        </button>
-      </div>
-
-      {/* Toast Notification */}
+      {/* Toast */}
       {toastMessage && (
         <div className="fixed top-14 inset-x-0 max-w-xs mx-auto z-50 animate-in slide-in-from-top duration-200">
           <div className="p-2.5 bg-slate-900/90 backdrop-blur-md text-white text-xs font-medium rounded-xl shadow-xl text-center border border-white/10 flex items-center justify-center space-x-1.5">
@@ -2123,38 +862,12 @@ export function App() {
         roomName={state.roomName}
         roomCode={state.roomCode}
         currentMember={currentMember}
-        isAdmin={isAdmin}
-        syncStatus={syncStatus}
-        lastSyncTime={lastSyncTime}
-        onManualSync={() => syncWithCloud(state.roomCode, true)}
-        onRebalance={handleRebalanceChores}
-        onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenMembers={() => setIsMembersOpen(true)}
-        onOpenChoreManager={() => setIsChoreManagerOpen(true)}
-        onOpenSchedule={() => setIsScheduleOpen(true)}
-        onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
-        onOpenHistory={() => setIsHistoryOpen(true)}
-        onOpenRules={() => setIsRulesOpen(true)}
-        onOpenTutorial={() => setIsTutorialOpen(true)}
-        onOpenPWA={() => setIsPWAOpen(true)}
         onOpenRoomModal={() => setIsRoomModalOpen(true)}
+        onRebalance={handleRebalanceChores}
         onLeaveRoom={handleLeaveRoom}
         onLogout={handleLogout}
       />
-
-      {/* Persistent Floating Admin Shortcut Button */}
-      {isAdmin && (
-        <div className="fixed bottom-20 right-4 z-40">
-          <button
-            onClick={() => setIsAdminDashboardOpen(true)}
-            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-2xl flex items-center space-x-1.5 border border-slate-700 cursor-pointer animate-in fade-in"
-            title="Mở Bảng Quản Trị Hệ Thống (Admin Dashboard)"
-          >
-            <ShieldCheck className="w-4 h-4 text-indigo-400" />
-            <span>Admin Panel</span>
-          </button>
-        </div>
-      )}
 
       {/* Room Modal */}
       <RoomModal
@@ -2163,29 +876,6 @@ export function App() {
         state={state}
         onJoinRoom={handleJoinRoom}
         onCreateRoom={handleCreateRoom}
-      />
-
-      {/* Transfer Chore Modal */}
-      <TransferChoreModal
-        isOpen={Boolean(transferTargetChore)}
-        onClose={() => setTransferTargetChore(null)}
-        chore={transferTargetChore}
-        currentMember={currentMember}
-        members={state.members}
-        onConfirmTransfer={handleInitiateTransfer}
-      />
-
-      {/* Rules Modal */}
-      <RulesModal
-        isOpen={isRulesOpen}
-        onClose={() => setIsRulesOpen(false)}
-      />
-
-      {/* Tutorial / Onboarding Modal */}
-      <TutorialModal
-        isOpen={isTutorialOpen}
-        onClose={() => setIsTutorialOpen(false)}
-        userId={authUser?.id}
       />
 
       {/* Add Chore Modal */}
@@ -2204,118 +894,8 @@ export function App() {
         roomName={state.roomName}
         onUpdateRoomName={handleUpdateRoomName}
         onAddMember={handleAddMember}
-        onDeleteMember={handleRequestDeleteMember}
+        onDeleteMember={handleDeleteMember}
       />
-
-      {/* Zalo Reminder Modal */}
-      {isZaloOpen && (
-        <ZaloReminderModal
-          isOpen={isZaloOpen}
-          onClose={() => setIsZaloOpen(false)}
-          roomName={state.roomName}
-          roomCode={state.roomCode}
-          chores={state.chores || []}
-          members={state.members || []}
-        />
-      )}
-
-      {/* History Modal */}
-      <HistoryModal
-        isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        logs={state.logs}
-      />
-
-      {/* PWA Install Modal */}
-      <PWAInstallModal
-        isOpen={isPWAOpen}
-        onClose={() => setIsPWAOpen(false)}
-      />
-
-      {/* Chore Recommendation Modal for New Room */}
-      <ChoreRecommendationModal
-        isOpen={isChoreRecOpen}
-        roomName={state.roomName}
-        onApplyChores={handleApplyRecommendedChores}
-        onSkip={handleSkipRecommendedChores}
-      />
-
-      {/* Chore Detail Modal */}
-      <ChoreDetailModal
-        isOpen={Boolean(selectedChoreForDetail)}
-        onClose={() => setSelectedChoreForDetail(null)}
-        chore={selectedChoreForDetail}
-        members={state.members}
-        currentUserId={currentUserId}
-        onToggleComplete={handleToggleComplete}
-        onOpenTransfer={(chore) => setTransferTargetChore(chore)}
-        onNudge={handleNudge}
-        onOpenRequestRedo={(chore) => setSelectedChoreForRedo(chore)}
-        onOpenChoreManager={() => {
-          setSelectedChoreForDetail(null);
-          setIsChoreManagerOpen(true);
-        }}
-      />
-
-      {/* Request Redo Modal */}
-      <RequestRedoModal
-        isOpen={Boolean(selectedChoreForRedo)}
-        onClose={() => setSelectedChoreForRedo(null)}
-        chore={selectedChoreForRedo}
-        currentMember={currentMember || null}
-        members={state.members}
-        onConfirmRedo={handleConfirmRedo}
-      />
-
-      {/* Notification & Democratic Voting Center Modal */}
-      {isNotificationsOpen && (
-        <NotificationModal
-          isOpen={isNotificationsOpen}
-          onClose={() => setIsNotificationsOpen(false)}
-          notifications={state.notifications || []}
-          proposals={state.proposals || []}
-          members={state.members || []}
-          currentUserId={currentUserId}
-          onMarkAllRead={handleMarkAllNotificationsAsRead}
-          onVoteProposal={handleVoteProposal}
-          onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
-        />
-      )}
-
-      {/* Push Notification Custom Settings Modal */}
-      {isNotificationSettingsOpen && (
-        <NotificationSettingsModal
-          isOpen={isNotificationSettingsOpen}
-          onClose={() => setIsNotificationSettingsOpen(false)}
-          onSettingsChanged={() => {
-            showToast('🔔 Đã lưu cài đặt thông báo thành công!');
-          }}
-        />
-      )}
-
-      {/* Chore Manager Modal (Quản lý, chỉnh sửa, xóa việc) */}
-      {isChoreManagerOpen && (
-        <ChoreManagerModal
-          isOpen={isChoreManagerOpen}
-          onClose={() => setIsChoreManagerOpen(false)}
-          chores={state.chores || []}
-          members={state.members || []}
-          onRequestEditChore={handleRequestEditChore}
-          onRequestDeleteChore={handleRequestDeleteChore}
-        />
-      )}
-
-      {/* Chore Schedule & GitHub Activity Heatmap Modal */}
-      {isScheduleOpen && (
-        <ChoreScheduleModal
-          isOpen={isScheduleOpen}
-          onClose={() => setIsScheduleOpen(false)}
-          chores={state.chores || []}
-          members={state.members || []}
-          logs={state.logs || []}
-          currentUserId={currentUserId}
-        />
-      )}
     </div>
   );
 }

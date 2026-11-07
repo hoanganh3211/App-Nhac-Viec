@@ -1,118 +1,36 @@
-import React from 'react';
-import { Plus, Sparkles, Menu, ChevronDown, Bell, RefreshCw, CloudOff } from 'lucide-react';
+import { Plus, Menu } from 'lucide-react';
 
 interface NavbarProps {
   roomName: string;
   onOpenAddChore: () => void;
   onOpenMenu: () => void;
-  onOpenRoomModal: () => void;
-  onOpenNotifications: () => void;
-  uncompletedCount: number;
-  unreadNotificationsCount: number;
-  syncStatus?: 'idle' | 'syncing' | 'connected' | 'error' | 'offline';
-  onManualSync?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({
-  roomName,
-  onOpenAddChore,
-  onOpenMenu,
-  onOpenRoomModal,
-  onOpenNotifications,
-  uncompletedCount,
-  unreadNotificationsCount,
-  syncStatus = 'connected',
-  onManualSync,
-}) => {
+export function Navbar({ roomName, onOpenAddChore, onOpenMenu }: NavbarProps) {
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-3.5 py-2.5 shadow-2xs">
-      <div className="max-w-md mx-auto flex items-center justify-between gap-2">
-        {/* Left: App Logo + Room Title + Badge + Sync Status */}
-        <div 
-          onClick={onOpenRoomModal}
-          className="flex items-center space-x-2 min-w-0 flex-1 cursor-pointer hover:opacity-85 transition"
-          title="Bấm để xem mã phòng & chia sẻ link"
-        >
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-xs shrink-0">
-            <Sparkles className="w-4 h-4" />
-          </div>
+    <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-slate-200">
+      <div className="max-w-md mx-auto flex items-center justify-between px-4 h-14">
+        <h1 className="text-lg font-bold text-slate-800 truncate">
+          {roomName}
+        </h1>
 
-          <div className="flex items-center space-x-1.5 min-w-0">
-            <h1 className="font-bold text-slate-800 text-sm truncate whitespace-nowrap flex items-center space-x-1">
-              <span>{roomName}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            </h1>
-            
-            {/* Sync Status Indicator */}
-            {onManualSync && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onManualSync();
-                }}
-                title={
-                  syncStatus === 'syncing' ? 'Đang đồng bộ Cloud...' :
-                  syncStatus === 'offline' || syncStatus === 'error' ? 'Mất kết nối Cloud (Bấm để thử lại)' :
-                  'Đã đồng bộ Cloud Realtime (Bấm để làm mới)'
-                }
-                className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-slate-100 transition shrink-0 cursor-pointer"
-              >
-                {syncStatus === 'syncing' ? (
-                  <RefreshCw className="w-3 h-3 text-indigo-600 animate-spin" />
-                ) : syncStatus === 'offline' || syncStatus === 'error' ? (
-                  <CloudOff className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                ) : (
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                )}
-              </button>
-            )}
-
-            {uncompletedCount > 0 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 shrink-0 whitespace-nowrap leading-none">
-                {uncompletedCount} việc
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Add Chore + Notifications Bell + Menu Drawer */}
-        <div className="flex items-center space-x-1.5 shrink-0">
+        <div className="flex items-center gap-1">
           <button
             onClick={onOpenAddChore}
-            title="Thêm việc mới"
-            className="h-8 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs transition flex items-center space-x-1 text-xs font-bold shrink-0"
+            className="p-2 rounded-xl hover:bg-slate-100 active:bg-slate-200 transition-colors"
+            aria-label="Thêm việc"
           >
-            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span className="text-[11px]">Thêm việc</span>
+            <Plus className="w-5 h-5 text-slate-700" />
           </button>
-
-          {/* Notifications bell */}
-          <button
-            onClick={onOpenNotifications}
-            title="Thông báo & Biểu quyết phòng"
-            className="h-8 w-8 relative flex items-center justify-center text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition shrink-0"
-          >
-            <Bell className="w-4 h-4" />
-            {unreadNotificationsCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-rose-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center shadow-xs animate-pulse">
-                {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
-              </span>
-            )}
-          </button>
-
           <button
             onClick={onOpenMenu}
-            title="Menu chức năng"
-            className="h-8 w-8 flex items-center justify-center text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition shrink-0"
+            className="p-2 rounded-xl hover:bg-slate-100 active:bg-slate-200 transition-colors"
+            aria-label="Menu"
           >
-            <Menu className="w-4 h-4" />
+            <Menu className="w-5 h-5 text-slate-700" />
           </button>
         </div>
       </div>
-    </header>
+    </nav>
   );
-};
+}
